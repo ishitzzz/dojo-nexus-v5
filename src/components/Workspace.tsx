@@ -1,0 +1,271 @@
+"use client";
+import { useState, useEffect, useRef } from "react";
+import YouTube from "react-youtube";
+import { motion, AnimatePresence } from "framer-motion";
+import GameArena from "./tools/GameArena";
+
+interface Chapter {
+  chapterTitle: string;
+  youtubeQuery: string;
+  quizQuestion: string;
+  toolType?: "mcq" | "cloze" | "analogy"; 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gamePayload?: any; 
+}
+
+interface Module {
+  moduleTitle: string;
+  chapters: Chapter[];
+}
+
+interface WorkspaceProps {
+  module: Module;
+  onBack: () => void;
+}
+
+export default function Workspace({ module, onBack }: WorkspaceProps) {
+  const [activeChapIdx, setActiveChapIdx] = useState(0);
+  const [completedChapIdxs, setCompletedChapIdxs] = useState<number[]>([]);
+  
+  const [showFeynman, setShowFeynman] = useState(false); 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [chapterContent, setChapterContent] = useState<any>(null);
+  const [loadingContent, setLoadingContent] = useState(true);
+
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [loadingVideo, setLoadingVideo] = useState(true);
+  const [videoModifier, setVideoModifier] = useState(""); 
+
+  const activeChapter = module.chapters[activeChapIdx];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const playerRef = useRef<any>(null);
+
+  useEffect(() => {
+    const fetchVideo = async () => {
+        setLoadingVideo(true);
+        setVideoId(null); 
+        try {
+            const res = await fetch(`/api/get-video?q=${encodeURIComponent(activeChapter.youtubeQuery)}&modifier=${videoModifier}`);
+            const data = await res.json();
+            setVideoId(data.videoId);
+        } catch (_err) {
+            console.error("Failed to find video");
+            setVideoId("jfKfPfyJRdk"); 
+        } finally {
+            setLoadingVideo(false);
+        }
+    };
+    fetchVideo();
+  }, [activeChapter, videoModifier]); 
+
+  useEffect(() => {
+    const fetchContent = async () => {
+        setLoadingContent(true);
+        try {
+            const res = await fetch('/api/generate-chapter-content', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    topic: activeChapter.chapterTitle, 
+                    context: module.moduleTitle 
+                })
+            });
+            const data = await res.json();
+            setChapterContent(data);
+        } catch (_e) {
+            console.error("Content Gen Failed");
+        } finally {
+            setLoadingContent(false);
+        }
+    };
+    fetchContent();
+    // FIX: Added module.moduleTitle to dependency array
+  }, [activeChapter, module.moduleTitle]);
+
+  const playerOpts = {
+    height: '100%',
+    width: '100%',
+    playerVars: { autoplay: 1, controls: 1, rel: 0 },
+  };
+
+  const handleVideoEnd = () => {
+    if (!completedChapIdxs.includes(activeChapIdx)) {
+      setShowFeynman(true);
+    }
+  };
+
+  const handleChapterComplete = () => {
+    if (!completedChapIdxs.includes(activeChapIdx)) {
+        setCompletedChapIdxs(prev => [...prev, activeChapIdx]);
+    }
+    setShowFeynman(false);
+    setTimeout(() => {
+        if (activeChapIdx < module.chapters.length - 1) {
+            setActiveChapIdx(prev => prev + 1);
+        }
+    }, 1000);
+  };
+
+  return (
+    <div className="w-full h-screen bg-black text-white flex flex-col pt-6 px-6 overflow-hidden relative">
+      
+      {/* HEADER */}
+      <div className="flex items-center justify-between mb-6 border-b border-gray-800 pb-4 mt-16">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-white transition-all text-sm font-bold">
+            <span>← EXIT DOJO</span>
+          </button>
+          <div className="h-6 w-px bg-gray-800"></div>
+          <div>
+            <h1 className="text-lg font-bold text-white">{activeChapter.chapterTitle}</h1>
+            <span className="text-teal-500 text-xs font-mono uppercase tracking-widest">{module.moduleTitle}</span>
+          </div>
+        </div>
+        <div className="text-right">
+            <div className="text-xs text-gray-500 uppercase tracking-widest">Progress</div>
+            <div className="text-teal-400 font-mono font-bold">{completedChapIdxs.length} / {module.chapters.length}</div>
+        </div>
+      </div>
+
+      {/* --- TITAN SPLIT LAYOUT --- */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden pb-6">
+        
+        {/* LEFT: SMART COMPANION */}
+        <div className="hidden lg:flex flex-[3.5] bg-gray-900/40 rounded-2xl border border-gray-800 p-6 flex-col overflow-y-auto custom-scrollbar relative">
+            {loadingContent ? (
+                <div className="space-y-4 animate-pulse mt-10">
+                    <div className="h-4 bg-gray-800 rounded w-1/3 mb-6"></div>
+                    <div className="h-32 bg-gray-800/50 rounded-lg w-full"></div>
+                    <div className="h-4 bg-gray-800 rounded w-2/3"></div>
+                </div>
+            ) : chapterContent ? (
+                <div className="space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h3 className="text-teal-500 font-bold text-xs uppercase tracking-widest mb-2">Briefing</h3>
+                        <p className="text-gray-200 text-sm leading-relaxed border-l-2 border-teal-500 pl-4">
+                            {chapterContent.summary}
+                        </p>
+                    </div>
+
+                    <div className="bg-blue-900/10 border border-blue-900/30 p-4 rounded-lg">
+                        <span className="text-blue-400 font-bold text-xs uppercase">💡 Mental Model</span>
+                        {/* FIX: Used &quot; for quotes inside JSX text */}
+                        <p className="text-gray-300 text-sm mt-1 italic">&quot;{chapterContent.analogy}&quot;</p>
+                    </div>
+
+                    {chapterContent.codeSnippet && (
+                        <div>
+                            <h3 className="text-purple-400 font-bold text-xs uppercase tracking-widest mb-2">Syntax</h3>
+                            <div className="bg-[#0d1117] p-4 rounded-lg border border-gray-800 font-mono text-xs text-gray-300 overflow-x-auto shadow-inner">
+                                <pre>{chapterContent.codeSnippet}</pre>
+                            </div>
+                        </div>
+                    )}
+
+                    <div>
+                        <h3 className="text-gray-500 font-bold text-xs uppercase tracking-widest mb-3">Key Intel</h3>
+                        <ul className="space-y-2">
+                            {chapterContent.keyPoints.map((p: string, i: number) => (
+                                <li key={i} className="text-sm text-gray-400 flex gap-2">
+                                    <span className="text-teal-500">•</span> {p}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    <div className="p-4 bg-red-900/5 border border-red-900/20 rounded-lg">
+                         <h3 className="text-red-400 font-bold text-xs uppercase mb-1">⚠️ Trap Card</h3>
+                         <p className="text-gray-400 text-xs">{chapterContent.commonPitfalls}</p>
+                    </div>
+                </div>
+            ) : (
+                <div className="text-center text-gray-500 mt-20">Initializing Companion...</div>
+            )}
+        </div>
+
+        {/* RIGHT: VIDEO & CONTROLS */}
+        <div className="flex-[6.5] flex flex-col gap-4">
+            
+            <div className="flex-1 bg-black rounded-xl border border-gray-800 overflow-hidden relative shadow-2xl">
+                {loadingVideo && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
+                        <div className="text-teal-500 animate-pulse font-mono tracking-widest">SEARCHING SATELLITE...</div>
+                    </div>
+                )}
+                {!loadingVideo && videoId && (
+                    <YouTube 
+                        videoId={videoId} 
+                        opts={playerOpts} 
+                        onEnd={handleVideoEnd}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        onReady={(e: any) => { playerRef.current = e.target; }}
+                        className="absolute inset-0" 
+                        iframeClassName="w-full h-full" 
+                    />
+                )}
+            </div>
+
+            <div className="h-14 bg-gray-900/50 rounded-xl border border-gray-800 flex items-center justify-between px-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 font-mono uppercase hidden sm:inline">Calibrate Feed:</span>
+                    <div className="flex bg-gray-800 rounded-lg p-1">
+                        <button 
+                            onClick={() => setVideoModifier("short")}
+                            className={`px-3 py-1 rounded text-xs transition-all ${videoModifier === 'short' ? 'bg-teal-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            ⚡ Fast
+                        </button>
+                        <button 
+                             onClick={() => setVideoModifier("detailed")}
+                             className={`px-3 py-1 rounded text-xs transition-all ${videoModifier === 'detailed' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            🧠 Deep
+                        </button>
+                        <button 
+                             onClick={() => setVideoModifier("practical")}
+                             className={`px-3 py-1 rounded text-xs transition-all ${videoModifier === 'practical' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            🛠️ Build
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 overflow-x-auto max-w-[40%] custom-scrollbar">
+                     {module.chapters.map((chap, i) => (
+                         <div 
+                            key={i} 
+                            onClick={() => setActiveChapIdx(i)}
+                            className={`h-2 w-8 rounded-full cursor-pointer transition-all ${
+                                i === activeChapIdx ? 'bg-teal-500' : 
+                                completedChapIdxs.includes(i) ? 'bg-gray-600' : 'bg-gray-800'
+                            }`}
+                            title={chap.chapterTitle}
+                         />
+                     ))}
+                </div>
+            </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showFeynman && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="bg-gray-900 p-6 rounded-2xl max-w-2xl w-full border border-gray-700 relative shadow-2xl">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold flex items-center gap-2 text-white">🧠 Checkpoint Reached</h2>
+                        <button onClick={() => setShowFeynman(false)} className="text-gray-400 hover:text-white">✕</button>
+                    </div>
+                    
+                    <div className="h-[500px] overflow-y-auto">
+                        <GameArena 
+                            toolType={activeChapter.toolType || "mcq"} 
+                            gamePayload={activeChapter.gamePayload || {}} 
+                            onComplete={handleChapterComplete} 
+                        />
+                    </div>
+                </div>
+            </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
