@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss/index.css";
 
 :root {
   --background: #ffffff;
@@ -23,7 +23,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-} 
+}
 
 /* The Supermemory Aurora Effect */
 .aurora-bg {
@@ -49,4 +49,20 @@ body {
   background: rgba(56, 189, 248, 0.1); /* Subtle blue tint on hover */
   border-color: rgba(56, 189, 248, 0.3);
   transform: translateY(-2px);
+}
+
+/* Custom Dark Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a; /* Slate 900 */
+}
+::-webkit-scrollbar-thumb {
+  background: #334155; /* Slate 700 */
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569; /* Slate 600 */
 }

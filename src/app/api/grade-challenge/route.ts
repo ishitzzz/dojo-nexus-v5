@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -16,11 +16,6 @@ export async function POST(req: Request) {
     correctAns = body.correctAns;
     context = body.context;
     questionType = body.questionType;
-
-    if (!process.env.GEMINI_API_KEY) throw new Error("No API Key");
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const prompt = `
       You are a friendly Tutor.
@@ -42,22 +37,22 @@ export async function POST(req: Request) {
       }
     `;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+    const result = await generateContentWithFailover(prompt);
+    const text = result.text.replace(/```json/g, "").replace(/```/g, "").trim();
     return NextResponse.json(JSON.parse(text));
 
   } catch (error) {
     console.error("Grading Error:", error);
-    
+
     // 2. Fallback Logic (Now works because variables are in scope)
     // Simple string matching fallback
-    const isMatch = userAns && correctAns 
+    const isMatch = userAns && correctAns
       ? userAns.toLowerCase().includes(correctAns.toLowerCase()) || correctAns.toLowerCase().includes(userAns.toLowerCase())
       : false;
 
-    return NextResponse.json({ 
-        isCorrect: isMatch, 
-        explanation: isMatch ? "Correct!" : "AI Grader offline, but that didn't look quite right." 
+    return NextResponse.json({
+      isCorrect: isMatch,
+      explanation: isMatch ? "Correct!" : "AI Grader offline, but that didn't look quite right."
     });
   }
 }

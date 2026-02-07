@@ -1,13 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
     const { question, userAnswer, context } = await req.json();
-    
-    // Connect to Gemini
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const prompt = `
       You are a strict but helpful tutor.
@@ -22,9 +18,10 @@ export async function POST(req: Request) {
       Return ONLY valid JSON.
     `;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().replace(/```json|```/g, "").trim();
-    
+    // Connect to Gemini
+    const result = await generateContentWithFailover(prompt);
+    const text = result.text.replace(/```json|```/g, "").trim();
+
     return NextResponse.json(JSON.parse(text));
 
   } catch (error) {

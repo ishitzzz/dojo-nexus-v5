@@ -1,10 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   const { text } = await req.json();
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-  const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
   const prompt = `
     You are a Helpful Tutor in a book margin.
@@ -15,6 +13,6 @@ export async function POST(req: Request) {
     If it's a concept, give a real-world analogy.
   `;
 
-  const result = await model.generateContent(prompt);
-  return NextResponse.json({ explanation: result.response.text() });
+  const result = await generateContentWithFailover(prompt);
+  return NextResponse.json({ explanation: result.text });
 }

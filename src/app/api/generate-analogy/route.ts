@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
 
 // Helper to clean JSON
@@ -7,14 +7,14 @@ function cleanAndParseJSON(text: string) {
     const firstBrace = text.indexOf("{");
     const lastBrace = text.lastIndexOf("}");
     if (firstBrace === -1 || lastBrace === -1) throw new Error("No JSON found");
-    
+
     // FIX: Using 'const' because we chain the replaces (no reassignment needed)
     const jsonStr = text.substring(firstBrace, lastBrace + 1)
-                      .replace(/,\s*}/g, "}")
-                      .replace(/\/\/.*$/gm, "");
-    
+      .replace(/,\s*}/g, "}")
+      .replace(/\/\/.*$/gm, "");
+
     return JSON.parse(jsonStr);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (_e) {
     throw new Error("JSON Parse Failed");
   }
@@ -24,12 +24,9 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     // Support both 'topic' (your old code) and 'concept' (frontend compatibility)
-    const topic = body.topic || body.concept || "Complex Concept"; 
+    const topic = body.topic || body.concept || "Complex Concept";
 
     if (!process.env.GEMINI_API_KEY) throw new Error("No API Key");
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     // 🎲 1. Random Domain Selection
     // We force the AI to pick distinct, non-tech domains
@@ -64,9 +61,9 @@ export async function POST(req: Request) {
       }
     `;
 
-    const result = await model.generateContent(prompt);
-    const data = cleanAndParseJSON(result.response.text());
-    
+    const result = await generateContentWithFailover(prompt);
+    const data = cleanAndParseJSON(result.text);
+
     return NextResponse.json(data);
 
   } catch (error) {

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
 
 // Helper to strip JSON markdown
@@ -9,47 +9,56 @@ function cleanJSON(text: string) {
 export async function POST(req: Request) {
   // FIX: Define topic outside try/catch scope
   let topic = "Topic";
-  
+
   try {
     const body = await req.json();
     topic = body.topic || "Topic"; // Assign it here
     const context = body.context;
 
-    if (!process.env.GEMINI_API_KEY) throw new Error("No API Key");
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
+    // 🧠 2. The Creative Prompt (Moved up)
     const prompt = `
-      You are a Senior Developer Tutor.
+      You are an expert technical tutor "bridging the gap" for a student watching a video tutorial.
       TOPIC: "${topic}"
       CONTEXT: "${context}"
 
-      Generate a structured learning guide (JSON) to display alongside a video tutorial.
+      Generate a high-quality, specific learning guide (JSON).
       
+      REQUIREMENTS:
+      1. "briefing": A technical summary of the video's intro. "In this lesson, we will explore..."
+      2. "keyTerms": A dictionary of 3-4 HARD/TECHNICAL terms used in this topic with clear, simple definitions.
+      3. "syntax": Actual code syntax or formula if relevant (use clear text, NO LaTeX '$$', use 'x^2' or standard notation).
+      4. "trapCard": A subtle, non-obvious mistake professionals make (not just "syntax error").
+      5. "analogy": A brilliant, memorable mental model.
+
       RETURN JSON ONLY:
       {
-        "summary": "A 2-sentence hook explaining why this concept matters.",
-        "keyPoints": ["Point 1", "Point 2", "Point 3"],
-        "codeSnippet": "Small, relevant code example (or null if conceptual)",
-        "commonPitfalls": "One specific mistake beginners make here.",
-        "analogy": "A simple real-world analogy (1 sentence)."
+        "summary": "Technical briefing of the lesson scope...",
+        "keyPoints": [
+            { "term": "Term 1", "def": "Simple definition..." },
+            { "term": "Term 2", "def": "Simple definition..." }
+        ],
+        "codeSnippet": "Code or Formula (optional)",
+        "commonPitfalls": "Advanced gotcha...",
+        "analogy": "Mental model..."
       }
     `;
 
-    const result = await model.generateContent(prompt);
-    const data = cleanJSON(result.response.text());
+    const result = await generateContentWithFailover(prompt);
+    const data = cleanJSON(result.text);
     return NextResponse.json(data);
 
   } catch (error) {
     console.error("Content Gen Error:", error);
     // FIX: Fallback now works because 'topic' is defined in the outer scope
     return NextResponse.json({
-        summary: "Mastering " + topic + " is essential for this module.",
-        keyPoints: ["Understand the syntax", "Practice the logic", "Review edge cases"],
-        codeSnippet: null,
-        commonPitfalls: "Skipping the foundational theory.",
-        analogy: "It's like building a foundation before the house."
+      summary: "Mastering " + topic + " is essential for this module.",
+      keyPoints: [
+        { term: "Syntax", def: "The grammatical rules of the language." },
+        { term: "Logic", def: "The flow of data and decision making." }
+      ],
+      codeSnippet: null,
+      commonPitfalls: "Skipping the foundational theory.",
+      analogy: "It's like building a foundation before the house."
     });
   }
 }
