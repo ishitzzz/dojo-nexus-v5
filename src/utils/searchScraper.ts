@@ -19,6 +19,14 @@ export interface VideoCandidate {
   };
   densityScore?: number;
   densityFlags?: string[];
+  // API Enriched Fields
+  tags?: string[];
+  category?: string;
+  officialTopics?: string[];
+  channelId?: string;
+  likeCount?: number;
+  commentCount?: number;
+  transcriptSnippet?: string;
 }
 
 export interface SearchQuery {
@@ -190,7 +198,7 @@ export function generateSearchMatrix(
   experienceLevel: string
 ): SearchQuery[] {
   const antiClickbait = "-clickbait -giveaway -reaction -shorts";
-  
+
   // Role-based modifiers
   let roleModifier = "";
   if (userRole === "Student") {
@@ -247,11 +255,31 @@ export function prepareForLLMRerank(videos: VideoCandidate[]): string {
     .slice(0, 5)
     .map((v, i) => {
       const descPreview = v.description.slice(0, 200).replace(/\n/g, " ");
+
+      let extraSignals = "";
+      if (v.officialTopics && v.officialTopics.length > 0) {
+        extraSignals += `\nOfficial Topics: ${v.officialTopics.join(", ")}`;
+      }
+      if (v.category) {
+        extraSignals += `\nCategory: ${v.category}`;
+      }
+      if (v.tags && v.tags.length > 0) {
+        extraSignals += `\nTags: ${v.tags.slice(0, 8).join(", ")}`;
+      }
+      if (v.likeCount && v.views > 0) {
+        const likeRatio = ((v.likeCount / v.views) * 100).toFixed(2);
+        extraSignals += `\nEngagement: ${likeRatio}% likes (${v.likeCount} likes)`;
+      }
+      if (v.transcriptSnippet) {
+        extraSignals += `\nTranscript Intro (First 60s): "${v.transcriptSnippet.slice(0, 300)}..."`;
+      }
+
       return `[${i + 1}] ID: ${v.videoId}
 Title: ${v.title}
+Channel: ${v.author.name}
 Duration: ${v.duration.timestamp}
 Description: ${descPreview}...
-Density Signals: ${v.densityFlags?.join(", ") || "None"}`;
+Density Flags: ${v.densityFlags?.join(", ") || "None"}${extraSignals}`;
     })
     .join("\n\n");
 }

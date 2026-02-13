@@ -1,5 +1,6 @@
 import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
+import { safeParseJsonObject } from "@/utils/safeJsonParser";
 
 export async function POST(req: Request) {
   // 1. Define variables OUTSIDE try block so 'catch' can see them
@@ -37,9 +38,16 @@ export async function POST(req: Request) {
       }
     `;
 
-    const result = await generateContentWithFailover(prompt);
-    const text = result.text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return NextResponse.json(JSON.parse(text));
+    const result = await generateContentWithFailover(prompt, { responseMimeType: "application/json" });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = safeParseJsonObject<any>(result.text);
+
+    if (!parsed) {
+      throw new Error("Invalid grading JSON");
+    }
+
+    return NextResponse.json(parsed);
 
   } catch (error) {
     console.error("Grading Error:", error);

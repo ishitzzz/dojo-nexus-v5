@@ -7,39 +7,69 @@ import {
   filterByDuration,
 } from "@/utils/searchScraper";
 import { vibeCheckRerank } from "@/utils/geminiReranker";
-import { fetchTranscript } from "@/utils/transcriptFetcher";
 import {
   checkVideoVault,
   storeInVideoVault,
   VideoVaultEntry,
 } from "@/utils/videoVault";
+import {
+  analyzeQuery,
+  filterByRelevance,
+} from "@/utils/queryIntelligence";
+import { fetchVideoDetails, YouTubeEnhancement } from "@/utils/youtubeClient";
+import { fetchIntroTranscripts } from "@/utils/transcriptClient";
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 const CONFIG = {
-  INITIAL_FETCH_COUNT: 10,      // Fetch top 10 from YouTube
-  RERANK_CANDIDATE_COUNT: 5,    // Send top 5 to Gemini for reranking
+  INITIAL_FETCH_COUNT: 10,
+  RERANK_CANDIDATE_COUNT: 5,
   MIN_VIDEO_DURATION: 120,      // 2 minutes minimum
-  MAX_VIDEO_DURATION: 7200,     // 2 hours max (unless modifier = detailed)
-  FALLBACK_VIDEO_ID: "",  // Empty - prefer no video over unrelated content
-  ENABLE_TRANSCRIPT_ANALYSIS: false, // Toggle transcript fetching (can be slow)
+  MAX_VIDEO_DURATION: 7200,     // 2 hours max
+  FALLBACK_VIDEO_ID: "",
+  RELEVANCE_THRESHOLD: 25,     // Minimum relevance score to pass guard
 };
 
-// Lightweight in-memory cache for immediate repeated requests
+// Lightweight in-memory cache
 const QUICK_CACHE = new Map<string, { videoId: string; timestamp: number }>();
 const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
+// ═══════════════════════════════════════════════════════════════
+// HELPER: Convert yt-search results to VideoCandidate[]
+// ═══════════════════════════════════════════════════════════════
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toVideoCandidates(videos: any[], count: number): VideoCandidate[] {
+  return videos.slice(0, count).map((v: any) => ({
+    videoId: v.videoId,
+    title: v.title || "",
+    description: v.description || "",
+    duration: {
+      seconds: v.seconds || 0,
+      timestamp: v.timestamp || "0:00",
+    },
+    views: v.views || 0,
+    author: {
+      name: v.author?.name || "Unknown",
+      url: v.author?.url,
+    },
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN HANDLER
+// ═══════════════════════════════════════════════════════════════
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q");
   const modifier = searchParams.get("modifier") || "default";
   const userRole = searchParams.get("role") || "Student";
   const experience = searchParams.get("experience") || "Deep Dive";
-  const preferredChannel = searchParams.get("preferredChannel"); // Anchor Channel
-  const previousTopic = searchParams.get("previousTopic"); // NEW: Context Awareness
+  const preferredChannel = searchParams.get("preferredChannel");
+  const previousTopic = searchParams.get("previousTopic");
+  const excludeIdsParam = searchParams.get("excludeIds");
+  const excludeIds = excludeIdsParam ? excludeIdsParam.split(",") : [];
 
-  // Early return for missing query
   if (!query) {
     return NextResponse.json({
       videoId: CONFIG.FALLBACK_VIDEO_ID,
@@ -48,75 +78,69 @@ export async function GET(request: Request) {
     });
   }
 
-  const cacheKey = `${query}|${modifier}|${userRole}|${experience}|${preferredChannel || "none"}|${previousTopic || "none"}`;
+  const cacheKey = `${query}|${modifier}|${userRole}|${experience}|${preferredChannel || "none"}`;
 
   // ═══════════════════════════════════════════════════════════════
-  // STEP 1: Check Quick Cache (in-memory)
+  // STEP 1: Check Quick Cache
   // ═══════════════════════════════════════════════════════════════
   const cached = QUICK_CACHE.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    console.log(`⚡ Quick cache hit for: "${query.slice(0, 30)}..."`);
-    return NextResponse.json({
-      videoId: cached.videoId,
-      source: "quick_cache"
-    });
+    if (!excludeIds.includes(cached.videoId)) {
+      console.log(`⚡ Quick cache hit for: "${query.slice(0, 30)}..."`);
+      return NextResponse.json({ videoId: cached.videoId, source: "quick_cache" });
+    } else {
+      console.log(`🚫 Quick cache hit BUT excluded: ${cached.videoId}`);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // STEP 2: Check Video Vault (Supabase/Local)
+  // STEP 2: Check Video Vault (Supabase)
   // ═══════════════════════════════════════════════════════════════
   try {
     const vaultResult = await checkVideoVault(query, userRole, experience);
-    if (vaultResult.found && vaultResult.entry) {
+
+    // Check if the vault result is in the excluded list
+    const isExcluded = vaultResult.entry && excludeIds.includes(vaultResult.entry.video_id);
+
+    if (vaultResult.found && vaultResult.entry && !isExcluded) {
       console.log(`💾 Vault hit for: "${query.slice(0, 30)}..." -> ${vaultResult.entry.video_id}`);
-      QUICK_CACHE.set(cacheKey, {
-        videoId: vaultResult.entry.video_id,
-        timestamp: Date.now()
-      });
+      QUICK_CACHE.set(cacheKey, { videoId: vaultResult.entry.video_id, timestamp: Date.now() });
       return NextResponse.json({
         videoId: vaultResult.entry.video_id,
         source: "video_vault",
         densityScore: vaultResult.entry.density_score,
         densityFlags: vaultResult.entry.density_flags,
       });
+    } else if (isExcluded) {
+      console.log(`🚫 Vault hit BUT excluded: ${vaultResult.entry?.video_id}`);
     }
   } catch (error) {
     console.warn("⚠️ Vault check error:", error);
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // STEP 3: Build Enhanced Query with Modifiers
+  // STEP 3: 🧠 QUERY INTELLIGENCE (Replaces all hardcoded logic)
   // ═══════════════════════════════════════════════════════════════
-  let enhancedQuery = query;
+  const { meaning, smartQuery } = analyzeQuery(query, modifier === "default" ? undefined : modifier);
 
-  // Add runtime modifiers based on user selection
-  if (modifier === "detailed") {
-    enhancedQuery += " full course comprehensive deep dive documentation";
-  } else if (modifier === "practical") {
-    enhancedQuery += " code example project build hands-on tutorial";
-  } else if (modifier === "short") {
-    enhancedQuery += " crash course explained quickly basics";
-  }
-
-  console.log(`🔎 Hidden Gem Search: "${enhancedQuery.slice(0, 60)}..."`);
+  console.log(`🔎 Smart Search: "${smartQuery.primary.slice(0, 60)}..." [Intent: ${meaning.intent}, Type: ${meaning.contentType}]`);
 
   // ═══════════════════════════════════════════════════════════════
-  // STEP 4: Fetch from YouTube (via yt-search)
+  // STEP 4: Fetch from YouTube with intelligent queries
   // ═══════════════════════════════════════════════════════════════
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let searchResult: any = { videos: [] };
-    let searchTierUsed = "regular";
+    let rawVideos: any[] = [];
+    let searchTierUsed = "smart_primary";
 
-    // -------------------------------------------------------------
-    // TIER 0: ANCHOR CHANNEL (Preference)
-    // -------------------------------------------------------------
+    // --- TIER 0: ANCHOR CHANNEL ---
     if (preferredChannel) {
       console.log(`⚓ Attempting Anchor Channel search for: ${preferredChannel}`);
       const anchorQuery = `"${preferredChannel}" ${query}`;
       const anchorResult = await yts(anchorQuery);
 
       if (anchorResult.videos && anchorResult.videos.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const anchorVideos = anchorResult.videos.filter((v: any) =>
           v.author.name.toLowerCase().includes(preferredChannel.toLowerCase()) ||
           v.title.toLowerCase().includes(preferredChannel.toLowerCase())
@@ -124,96 +148,146 @@ export async function GET(request: Request) {
 
         if (anchorVideos.length > 0) {
           console.log(`✅ Anchor Channel found ${anchorVideos.length} videos.`);
-          searchResult.videos = anchorVideos;
+          rawVideos = anchorVideos;
           searchTierUsed = "anchor_channel";
         }
       }
     }
 
-    // -------------------------------------------------------------
-    // TIER 0.5: CONCEPT FIRST (New for Beginners)
-    // -------------------------------------------------------------
-    if (searchResult.videos.length === 0 && (userRole === "Student" || experience === "Beginner") && modifier === "default") {
-      console.log("🎓 Using Concept-First Search for Student/Beginner...");
-      const conceptQuery = `${query} explained concept visual mental model -tutorial`; // Negate generic tutorials to find explanations
-      const conceptResult = await yts(conceptQuery);
-
-      if (conceptResult.videos && conceptResult.videos.length > 0) {
-        console.log("✅ Concept-First Search successful");
-        searchResult.videos = conceptResult.videos;
-        searchTierUsed = "concept_first";
+    // --- TIER 1: SMART PRIMARY QUERY ---
+    if (rawVideos.length === 0) {
+      const primaryResult = await yts(smartQuery.primary);
+      if (primaryResult.videos && primaryResult.videos.length > 0) {
+        rawVideos = primaryResult.videos;
+        searchTierUsed = "smart_primary";
       }
     }
 
-    // -------------------------------------------------------------
-    // REGULAR TIERS (Fallback)
-    // -------------------------------------------------------------
-    if (searchResult.videos.length === 0) {
+    // --- TIER 2: FALLBACK QUERY (just subjects) ---
+    if (rawVideos.length === 0) {
+      console.warn("⚠️ Primary query returned 0. Trying fallback...");
+      const fallbackResult = await yts(smartQuery.fallback);
+      if (fallbackResult.videos && fallbackResult.videos.length > 0) {
+        rawVideos = fallbackResult.videos;
+        searchTierUsed = "smart_fallback";
+      }
+    }
 
-      // Tier 1 (Strict)
-      searchResult = await yts(enhancedQuery);
-
-      if (!searchResult.videos || searchResult.videos.length === 0) {
-        console.warn("⚠️ Tier 1 (Strict) search returned 0 results. Trying Tier 2 (Moderate)...");
-
-        // Tier 2: Moderate "Middle Way"
-        const moderateQuery = `${query} advanced implementation deep dive detailed`;
-        const tier2Result = await yts(moderateQuery);
-
-        if (tier2Result.videos && tier2Result.videos.length > 0) {
-          console.log("✅ Tier 2 (Moderate) search successful");
-          searchResult.videos = tier2Result.videos;
-        } else {
-          console.warn("⚠️ Tier 2 (Moderate) search returned 0 results. Trying Tier 3 (Basic)...");
-
-          // Tier 3: Basic Safety Net
-          const basicQuery = `${query} tutorial`;
-          const tier3Result = await yts(basicQuery);
-
-          if (tier3Result.videos && tier3Result.videos.length > 0) {
-            console.log("✅ Tier 3 (Basic) search successful");
-            searchResult.videos = tier3Result.videos;
-          } else {
-            return NextResponse.json({
-              videoId: CONFIG.FALLBACK_VIDEO_ID,
-              source: "fallback",
-              reason: "No results from YouTube (after all retries)"
-            });
-          }
-        }
+    // --- TIER 3: RAW QUERY (last resort) ---
+    if (rawVideos.length === 0) {
+      console.warn("⚠️ Fallback returned 0. Using raw query...");
+      const rawResult = await yts(query);
+      if (rawResult.videos && rawResult.videos.length > 0) {
+        rawVideos = rawResult.videos;
+        searchTierUsed = "raw_query";
+      } else {
+        return NextResponse.json({
+          videoId: CONFIG.FALLBACK_VIDEO_ID,
+          source: "fallback",
+          reason: "No results from YouTube (after all tiers)"
+        });
       }
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 5: Convert to VideoCandidate format and apply heuristics
+    // STEP 5: Convert to candidates & DEDUPLICATE
     // ═══════════════════════════════════════════════════════════════
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const candidates: VideoCandidate[] = searchResult.videos
-      .slice(0, CONFIG.INITIAL_FETCH_COUNT)
+
+    // Filter raw videos FIRST to ensure we don't slice away potential candidates
+    let availableVideos = rawVideos;
+    if (excludeIds.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((v: any) => ({
-        videoId: v.videoId,
-        title: v.title || "",
-        description: v.description || "",
-        duration: {
-          seconds: v.seconds || 0, // yt-search uses 'seconds'
-          timestamp: v.timestamp || "0:00",
-        },
-        views: v.views || 0,
-        author: {
-          name: v.author?.name || "Unknown",
-          url: v.author?.url,
-        },
-      }));
+      availableVideos = rawVideos.filter((v: any) => !excludeIds.includes(v.videoId));
+      const removedCount = rawVideos.length - availableVideos.length;
+      if (removedCount > 0) {
+        console.log(`♻️ Pre-slice Deduplication: Ignored ${removedCount} excluded videos.`);
+      }
+    }
+
+    let candidates = toVideoCandidates(availableVideos, CONFIG.INITIAL_FETCH_COUNT);
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 6: Apply Metadata Heuristic Filter (Density Scoring)
+    // STEP 5.5: 🧬 ENRICHMENT (The Microscope)
+    // Fetch deep metadata from YouTube API (1 unit cost)
     // ═══════════════════════════════════════════════════════════════
-    let filteredCandidates = candidates;
+    // ═══════════════════════════════════════════════════════════════
 
-    // SKIP duration filtering if we found an Anchor Channel video
+    // Extract IDs for batch fetching
+    const candidateIds = candidates.map(c => c.videoId);
+    let enrichedCount = 0;
+
+    try {
+      const enrichmentMap = await fetchVideoDetails(candidateIds);
+
+      if (enrichmentMap.size > 0) {
+        candidates.forEach(candidate => {
+          const details = enrichmentMap.get(candidate.videoId);
+          if (details) {
+            // Enrich the candidate with API data
+            candidate.tags = details.tags;
+            candidate.category = details.categoryName;
+            candidate.officialTopics = details.officialTopics;
+            candidate.channelId = details.channelId;
+            candidate.likeCount = details.statistics.likeCount;
+            candidate.commentCount = details.statistics.commentCount;
+
+            // Update duration if we have exact data (parsing ISO 8601 to seconds would be ideal here)
+            // For now, we trust the scraper's seconds but keep the ISO string if needed for debugging
+
+            enrichmentMap.delete(candidate.videoId);
+            enrichedCount++;
+          }
+        });
+        console.log(`✨ Enriched ${enrichedCount}/${candidates.length} candidates with API metadata.`);
+      }
+    } catch (err) {
+      console.warn("⚠️ API Enrichment skipped:", err);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 5.6: 👂 SENTINEL (The Ear)
+    // Fetch first 60s of transcript for top candidates (0 cost)
+    // ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
+
+    // Only fetch for top 5 to save time/bandwidth (even though it's free)
+    // We prioritize candidates that survived the density filter if possible, 
+    // but here we just take the top ones from the API enriched list.
+    const sentinelIds = candidates.slice(0, 5).map(c => c.videoId);
+
+    try {
+      const transcriptMap = await fetchIntroTranscripts(sentinelIds);
+
+      candidates.forEach(candidate => {
+        if (transcriptMap.has(candidate.videoId)) {
+          candidate.transcriptSnippet = transcriptMap.get(candidate.videoId);
+        }
+      });
+    } catch (err) {
+      console.warn("⚠️ Transcript Sentinel skipped:", err);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 6: 🛡️ RELEVANCE GUARD (Layer 3 — The Bouncer)
+    // ═══════════════════════════════════════════════════════════════
+    let relevantCandidates = candidates;
+
+    if (searchTierUsed !== "anchor_channel" && smartQuery.subjects.length > 0) {
+      const { passed, bestEffort } = filterByRelevance(
+        candidates,
+        smartQuery.subjects,
+        CONFIG.RELEVANCE_THRESHOLD
+      );
+      relevantCandidates = passed.length > 0 ? passed : bestEffort;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 7: Duration filter + Density scoring
+    // ═══════════════════════════════════════════════════════════════
+    let filteredCandidates = relevantCandidates;
+
     if (searchTierUsed !== "anchor_channel") {
-      filteredCandidates = filterByDuration(candidates, CONFIG.MIN_VIDEO_DURATION);
+      filteredCandidates = filterByDuration(relevantCandidates, CONFIG.MIN_VIDEO_DURATION);
       if (modifier !== "detailed") {
         filteredCandidates = filteredCandidates.filter(
           (v) => v.duration.seconds <= CONFIG.MAX_VIDEO_DURATION
@@ -222,7 +296,7 @@ export async function GET(request: Request) {
     }
 
     if (filteredCandidates.length === 0) {
-      filteredCandidates = candidates;
+      filteredCandidates = relevantCandidates;
     }
 
     const rankedCandidates = rankByDensity(filteredCandidates);
@@ -233,38 +307,7 @@ export async function GET(request: Request) {
     });
 
     // ═══════════════════════════════════════════════════════════════
-    // RELEVANCE ESCAPE HATCH
-    // ═══════════════════════════════════════════════════════════════
-    const RELEVANCE_THRESHOLD = 15;
-
-    if (searchTierUsed === "anchor_channel" && rankedCandidates.length > 0) {
-      const topAnchorVideo = rankedCandidates[0];
-      if ((topAnchorVideo.densityScore || 0) < RELEVANCE_THRESHOLD) {
-        console.warn(`⚠️ Anchor Channel video has low relevance (score: ${topAnchorVideo.densityScore}). Falling back...`);
-        searchTierUsed = "anchor_abandoned";
-
-        const fallbackResult = await yts(enhancedQuery);
-        if (fallbackResult.videos && fallbackResult.videos.length > 0) {
-          // Reuse candidate mapping logic (simplified for brevity here, should ideally be a function)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const fallbackCandidates: VideoCandidate[] = fallbackResult.videos.slice(0, CONFIG.INITIAL_FETCH_COUNT).map((v: any) => ({
-            videoId: v.videoId, title: v.title || "", description: v.description || "",
-            duration: { seconds: v.seconds || 0, timestamp: v.timestamp || "0:00" },
-            views: v.views || 0, author: { name: v.author?.name || "Unknown", url: v.author?.url }
-          }));
-
-          let fallbackFiltered = filterByDuration(fallbackCandidates, CONFIG.MIN_VIDEO_DURATION);
-          if (fallbackFiltered.length === 0) fallbackFiltered = fallbackCandidates;
-          const fallbackRanked = rankByDensity(fallbackFiltered);
-
-          rankedCandidates.length = 0;
-          rankedCandidates.push(...fallbackRanked);
-        }
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // STEP 7: Gemini "Vibe-Check" Reranker 
+    // STEP 8: Gemini Vibe-Check Reranker (AI only sees RELEVANT videos)
     // ═══════════════════════════════════════════════════════════════
     let selectedVideo: VideoCandidate | undefined;
     let selectionSource = searchTierUsed === "anchor_channel" ? "anchor_preference" : "density_heuristic";
@@ -276,7 +319,6 @@ export async function GET(request: Request) {
       const topCandidates = rankedCandidates.slice(0, CONFIG.RERANK_CANDIDATE_COUNT);
       const candidatesForLLM = prepareForLLMRerank(topCandidates);
 
-      // Context-aware topic
       const contextAwareTopic = previousTopic
         ? `${query} (User previously learned: ${previousTopic})`
         : query;
@@ -322,7 +364,7 @@ export async function GET(request: Request) {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 9: Store in Video Vault (Skip transcript for now)
+    // STEP 9: Store + Cache
     // ═══════════════════════════════════════════════════════════════
     const vaultEntry: VideoVaultEntry = {
       video_id: selectedVideo.videoId,
@@ -356,10 +398,16 @@ export async function GET(request: Request) {
       densityScore: selectedVideo.densityScore,
       densityFlags: selectedVideo.densityFlags,
       duration: selectedVideo.duration.timestamp,
-      isLowDensity: false,
       debug: {
         candidatesAnalyzed: rankedCandidates.length,
         usedAnchorChannel: searchTierUsed === "anchor_channel",
+        searchTier: searchTierUsed,
+        queryIntelligence: {
+          intent: meaning.intent,
+          contentType: meaning.contentType,
+          subjects: smartQuery.subjects,
+          primaryQuery: smartQuery.primary,
+        },
       },
     });
 

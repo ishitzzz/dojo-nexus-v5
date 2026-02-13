@@ -1,10 +1,6 @@
 import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
-
-// Helper to strip JSON markdown
-function cleanJSON(text: string) {
-  return JSON.parse(text.replace(/```json/g, "").replace(/```/g, ""));
-}
+import { safeParseJsonObject } from "@/utils/safeJsonParser";
 
 export async function POST(req: Request) {
   // FIX: Define topic outside try/catch scope
@@ -44,7 +40,15 @@ export async function POST(req: Request) {
     `;
 
     const result = await generateContentWithFailover(prompt);
-    const data = cleanJSON(result.text);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = safeParseJsonObject<any>(result.text);
+
+    // Validate Schema (Failover Trigger)
+    if (!data || !data.keyPoints || !Array.isArray(data.keyPoints)) {
+      throw new Error("Invalid structure: missing keyPoints");
+    }
+
     return NextResponse.json(data);
 
   } catch (error) {

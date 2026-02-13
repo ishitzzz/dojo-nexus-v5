@@ -1,5 +1,6 @@
 import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
+import { safeParseJsonObject } from "@/utils/safeJsonParser";
 
 export async function POST(req: Request) {
   try {
@@ -19,10 +20,16 @@ export async function POST(req: Request) {
     `;
 
     // Connect to Gemini
-    const result = await generateContentWithFailover(prompt);
-    const text = result.text.replace(/```json|```/g, "").trim();
+    const result = await generateContentWithFailover(prompt, { responseMimeType: "application/json" });
 
-    return NextResponse.json(JSON.parse(text));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = safeParseJsonObject<any>(result.text);
+
+    if (!parsed) {
+      throw new Error("Invalid Feynman validation JSON");
+    }
+
+    return NextResponse.json(parsed);
 
   } catch (error) {
     return NextResponse.json({ isCorrect: false, feedback: "AI Error. Try again." });

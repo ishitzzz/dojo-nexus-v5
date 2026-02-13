@@ -38,6 +38,16 @@ function RoadmapContent() {
   const role = searchParams.get("role") || "Student";
   const experience = searchParams.get("experience") || "Deep Dive";
 
+  // NEW: Global video history to prevent duplicates across modules
+  const [seenVideoIds, setSeenVideoIds] = useState<string[]>([]);
+
+  const handleVideoSeen = (videoId: string) => {
+    setSeenVideoIds(prev => {
+      if (prev.includes(videoId)) return prev;
+      return [...prev, videoId];
+    });
+  };
+
   // 2. INITIALIZE SKELETON (Course Architecture)
   useEffect(() => {
     const init = async () => {
@@ -164,10 +174,12 @@ function RoadmapContent() {
         </div>
 
         <Workspace
-          module={activeModule}
+          module={activeModule as any}
           onBack={() => setActiveModule(null)}
           userContext={{ role, experience, topic: topic || "" }}
           anchorChannel={course.anchorChannel || null}
+          seenVideoIds={seenVideoIds}
+          onVideoSeen={handleVideoSeen}
         />
       </div>
     );

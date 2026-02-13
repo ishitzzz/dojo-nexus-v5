@@ -30,9 +30,11 @@ interface WorkspaceProps {
     onBack: () => void;
     userContext?: UserContext;  // New: Pass user context for Hidden Gem search
     anchorChannel?: string | null;  // NEW: Anchor Channel for continuity
+    seenVideoIds: string[];         // NEW: Global history from parent
+    onVideoSeen: (id: string) => void; // NEW: Callback to update global history
 }
 
-export default function Workspace({ module, onBack, userContext, anchorChannel }: WorkspaceProps) {
+export default function Workspace({ module, onBack, userContext, anchorChannel, seenVideoIds, onVideoSeen }: WorkspaceProps) {
     const [activeChapIdx, setActiveChapIdx] = useState(0);
     const [completedChapIdxs, setCompletedChapIdxs] = useState<number[]>([]);
     const [companionTab, setCompanionTab] = useState<"context" | "chat">("context"); // NEW: Tab state
@@ -46,6 +48,8 @@ export default function Workspace({ module, onBack, userContext, anchorChannel }
     const [loadingVideo, setLoadingVideo] = useState(true);
     const [videoModifier, setVideoModifier] = useState("");
     const [videoMeta, setVideoMeta] = useState<{ densityScore?: number; densityFlags?: string[] } | null>(null);
+
+    // REMOVED: Local playedVideoIds state. Now using props.
 
     const activeChapter = module.chapters[activeChapIdx];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,6 +71,7 @@ export default function Workspace({ module, onBack, userContext, anchorChannel }
                     modifier: videoModifier,
                     role: role,
                     experience: experience,
+                    excludeIds: seenVideoIds.join(","), // Use global history
                 });
 
                 // CRITICAL: Add Anchor Channel if available (enforces continuity)
@@ -75,7 +80,15 @@ export default function Workspace({ module, onBack, userContext, anchorChannel }
                 }
                 const res = await fetch(`/api/get-video?${params.toString()}`);
                 const data = await res.json();
-                setVideoId(data.videoId);
+
+                if (data.videoId) {
+                    setVideoId(data.videoId);
+                    // Notify parent of new video
+                    if (!seenVideoIds.includes(data.videoId)) {
+                        onVideoSeen(data.videoId);
+                    }
+                }
+
                 // Store density metadata for display
                 if (data.densityScore !== undefined) {
                     setVideoMeta({
@@ -226,7 +239,7 @@ export default function Workspace({ module, onBack, userContext, anchorChannel }
                                             <h3 className="text-gray-500 font-bold text-xs uppercase tracking-widest mb-3">Key Terminology</h3>
                                             <ul className="space-y-3">
                                                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                                                {chapterContent.keyPoints.map((p: any, i: number) => (
+                                                {(chapterContent.keyPoints || []).map((p: any, i: number) => (
                                                     <li key={i} className="text-sm text-gray-400">
                                                         <span className="text-teal-400 font-bold">{p.term}:</span> <span className="text-gray-300">{p.def}</span>
                                                     </li>

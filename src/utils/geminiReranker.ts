@@ -5,6 +5,7 @@
  */
 
 import { generateContentWithFailover } from "@/utils/gemini";
+import { safeParseJsonObject, safeParseJsonArray } from "@/utils/safeJsonParser";
 
 export interface RerankerInput {
     candidates: string;  // Formatted string of video metadata
@@ -32,34 +33,24 @@ export async function vibeCheckRerank(
     }
 
     try {
+        const prompt = buildRerankerPrompt(input);
         const result = await generateContentWithFailover(prompt, {
             temperature: 0.1,  // Low temperature for consistent results
             maxOutputTokens: 256,
+            responseMimeType: "application/json",
         });
-        const response = result.text;
 
-        // Extract the video ID from the response
-        const videoIdMatch = response.match(/(?:winner|id|video[_\s]?id)[:\s]*([a-zA-Z0-9_-]{11})/i);
+        const data = safeParseJsonObject<{ winnerId: string; reasoning: string }>(result.text);
 
-        if (videoIdMatch) {
+        if (data?.winnerId && data.winnerId.length === 11) {
             return {
-                winnerId: videoIdMatch[1],
-                reasoning: response,
+                winnerId: data.winnerId,
+                reasoning: data.reasoning || "Selected by Gemini Reranker",
                 fallbackUsed: false,
             };
         }
 
-        // Try to find any 11-character YouTube ID pattern
-        const anyIdMatch = response.match(/\b([a-zA-Z0-9_-]{11})\b/);
-        if (anyIdMatch) {
-            return {
-                winnerId: anyIdMatch[1],
-                reasoning: response,
-                fallbackUsed: false,
-            };
-        }
-
-        console.warn("⚠️ Could not parse Gemini response:", response);
+        console.warn("⚠️ Could not parse Gemini response:", result.text);
         return { winnerId: null, fallbackUsed: true };
 
     } catch (error) {
@@ -85,24 +76,27 @@ Analyze these YouTube video candidates and select the ONE with the highest Infor
 CANDIDATES:
 ${input.candidates}
 
-RANKING CRITERIA (in order of importance):
-1. 🔗 Contains links to GitHub, documentation, or notebooks
-2. 📚 Provides structured, educational content (not entertainment)
-3. ⚙️ Mentions specific libraries, algorithms, or implementation details
-4. 🎓 Academic or research-oriented approach
-5. ⏱️ Appropriate length for deep learning (15+ minutes preferred)
+RANKING CRITERIA (CRITICAL):
+        1. 🎯 **TOPIC ALIGNMENT (The "Topic Police")**: 
+           - Does the video actually TEACH "${input.topic}"?
+           - **REJECT (Score 0)** if the video is about a *different* subject (e.g. "Deep Learning") even if it mentions the topic.
+           - The video MUST be *conceptually* aligned with: ${input.topic}
+        
+        2. ⏳ **PACING & DURATION**:
+           - **Concept Phase (Modules 1-2)**: Prefer 5-15 mins. **PENALIZE > 20 mins**.
+           - **Implementation Phase**: Prefer 10-30 mins.
+           - **Mastery Phase**: Long videos allowed.
+        
+        3. 🧬 **METADATA Matches**: "Official Topics" and "Tags".
+        4. 👂 **TRANSCRIPT Matches**: Intro text aligns with intent.
 
-ANTI-CRITERIA (avoid these):
-- ❌ Hyperbolic language ("Mind-blowing", "Insane", etc.)
-- ❌ High view count with shallow content
-- ❌ Entertainment-focused rather than educational
-- ❌ Clickbait titles with ALL CAPS or excessive emojis
-
-RESPONSE FORMAT:
-Return ONLY the Video ID of the winner in this exact format:
-WINNER_ID: [11-character-video-id]
-
-Select the best video now:`;
+        RETURN JSON ONLY:
+        {
+          "winnerId": "11-char-video-id",
+          "reasoning": "Reason..."
+        }
+        
+        Select the best video now:`;
 }
 
 /**
@@ -148,9 +142,14 @@ Return JSON array:
             maxOutputTokens: 512,
             responseMimeType: "application/json",
         });
-        const data = JSON.parse(result.text);
+        const data = safeParseJsonObject<{ queries: { query: string }[] }>(result.text);
 
-        return data.queries.map((q: { query: string }) => q.query);
+        if (!data || !Array.isArray(data.queries)) {
+            console.warn("⚠️ Query expansion returned invalid structure:", result.text);
+            return null;
+        }
+
+        return data.queries.map((q) => q.query);
 
     } catch (error) {
         console.error("❌ Query Expansion Error:", error);
@@ -197,7 +196,7 @@ Return JSON:
             responseMimeType: "application/json",
         });
 
-        return JSON.parse(result.text);
+        return safeParseJsonObject<{ score: number; summary: string }>(result.text);
 
     } catch (error) {
         console.error("❌ Transcript Analysis Error:", error);

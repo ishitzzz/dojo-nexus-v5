@@ -1,24 +1,6 @@
 import { generateContentWithFailover } from "@/utils/gemini";
 import { NextResponse } from "next/server";
-
-// Helper to clean JSON
-function cleanAndParseJSON(text: string) {
-  try {
-    const firstBrace = text.indexOf("{");
-    const lastBrace = text.lastIndexOf("}");
-    if (firstBrace === -1 || lastBrace === -1) throw new Error("No JSON found");
-
-    // FIX: Using 'const' because we chain the replaces (no reassignment needed)
-    const jsonStr = text.substring(firstBrace, lastBrace + 1)
-      .replace(/,\s*}/g, "}")
-      .replace(/\/\/.*$/gm, "");
-
-    return JSON.parse(jsonStr);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (_e) {
-    throw new Error("JSON Parse Failed");
-  }
-}
+import { safeParseJsonObject } from "@/utils/safeJsonParser";
 
 export async function POST(req: Request) {
   try {
@@ -61,8 +43,15 @@ export async function POST(req: Request) {
       }
     `;
 
-    const result = await generateContentWithFailover(prompt);
-    const data = cleanAndParseJSON(result.text);
+    // Connect to Gemini
+    const result = await generateContentWithFailover(prompt, { responseMimeType: "application/json" });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = safeParseJsonObject<any>(result.text);
+
+    if (!data) {
+      throw new Error("Failed to parse analogy JSON");
+    }
 
     return NextResponse.json(data);
 

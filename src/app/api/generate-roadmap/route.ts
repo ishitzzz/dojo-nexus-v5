@@ -1,29 +1,7 @@
 import { generateContentWithFailover } from "@/utils/gemini";
 import { BACKUP_ROADMAPS } from "@/data/backupRoadmaps";
 import { NextResponse } from "next/server";
-
-// ═══════════════════════════════════════════════════════════════
-// CLEANUP UTILS
-// ═══════════════════════════════════════════════════════════════
-function cleanAndParseJSON(text: string) {
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON object found");
-
-    let jsonStr = jsonMatch[0]
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .replace(/,\s*}/g, "}") // Trailing comma fix
-      .replace(/,\s*]/g, "]")
-      .replace(/\/\/.*$/gm, "") // Remove comments
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-
-    return JSON.parse(jsonStr);
-  } catch (error) {
-    console.error("JSON Clean Failed on:", text);
-    throw new Error("JSON Parse Failed: " + String(error));
-  }
-}
+import { safeParseJsonObject } from "@/utils/safeJsonParser";
 
 // ═══════════════════════════════════════════════════════════════
 // WEB CONTEXT (Keep for grounding)
@@ -125,24 +103,31 @@ export async function POST(req: Request) {
         
         GOAL: Create detailed chapters for the module: "${moduleContext.moduleTitle}"
         COURSE: "${userGoal}"
-        PREVIOUS CONTEXT: ${moduleContext.previousModuleTitle ? `The user just finished "${moduleContext.previousModuleTitle}".` : "This is the very first module."}
+        CONTEXT: ${moduleContext.previousModuleTitle ? `The user just finished "${moduleContext.previousModuleTitle}".` : "This is the very first module."}
+        MODULE_INDEX: ${moduleContext.moduleIndex || 0}
         
         INSTRUCTION:
         Break this module down into 3-5 atomic chapters.
-        Focus on "First Principles" - explain the CONCEPT before the SYNTAX.
         
-        YOUTUBE QUERY RULES (CRITICAL):
+        EVOLUTIONARY PACING RULES (CRITICAL):
+        - IF this is Module 1 or 2: FOCUS ON CONCEPTS. Explain "Why" and "What" before "How". Use analogies.
+        - IF this is Module 3, 4, or 5: FOCUS ON IMPLEMENTATION. Detailed "How-To", code, setup.
+        - IF this is Module 6+: FOCUS ON MASTERY. Optimization, scaling, rare edge cases.
+
+        YOUTUBE QUERY RULES:
         1. Be ULTRA-SPECIFIC. Include technical terms.
-        2. If this is a beginner module, use "explained visually" or "concept".
-        3. If this is an advanced module, use "implementation" or "deep dive".
-        4. ALWAYS include the main topic ("${userGoal}") in the query.
+        2. Based on the PACING RULE above:
+           - Concept Phase: Append "explained visually", "theory", or "basics".
+           - Implementation Phase: Append "tutorial", "code", "implementation", or "guide".
+           - Mastery Phase: Append "advanced", "deep dive", "optimization".
+        3. ALWAYS include the main topic ("${userGoal}") in the query.
 
         RETURN JSON ONLY:
         {
           "chapters": [
              {
                "chapterTitle": "Specific micro-concept",
-               "youtubeQuery": "Specific search query",
+               "youtubeQuery": "Specific search query (adhering to pacing rules)",
                "narrativeBridge": "Reasoning for this step...",
                "toolType": "analogy",
                "gamePayload": { "concept": "...", "analogy": "...", "explanation": "..." }
@@ -159,8 +144,14 @@ export async function POST(req: Request) {
       temperature: 0.7,
     });
 
-    console.log(`🤖 Gemini Response (${mode}) [Model: ${result.modelUsed}]:`, result.text.slice(0, 100));
-    const data = cleanAndParseJSON(result.text);
+    console.log(`🤖 Gemini Response (${body.mode}) [Model: ${result.modelUsed}]:`, result.text.slice(0, 100));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = safeParseJsonObject<any>(result.text);
+
+    if (!data) {
+      throw new Error("Failed to parse valid roadmap JSON");
+    }
 
     return NextResponse.json(data);
 
