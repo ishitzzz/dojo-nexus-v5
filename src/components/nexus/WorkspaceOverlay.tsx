@@ -10,9 +10,11 @@ interface WorkspaceOverlayProps {
     node: KnowledgeNode | null;
     onClose: () => void;
     originTopic: string;
+    seenVideoIds: string[];
+    onVideoSeen: (id: string) => void;
 }
 
-export default function WorkspaceOverlay({ node, onClose, originTopic }: WorkspaceOverlayProps) {
+export default function WorkspaceOverlay({ node, onClose, originTopic, seenVideoIds, onVideoSeen }: WorkspaceOverlayProps) {
     // Convert KnowledgeNode to Workspace module format
     const module = node
         ? {
@@ -89,6 +91,8 @@ export default function WorkspaceOverlay({ node, onClose, originTopic }: Workspa
                                             topic: originTopic,
                                         }}
                                         anchorChannel={null}
+                                        seenVideoIds={seenVideoIds}
+                                        onVideoSeen={onVideoSeen}
                                     />
                                 </div>
 

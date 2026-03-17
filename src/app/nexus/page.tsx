@@ -224,8 +224,19 @@ function NexusCanvasInner() {
 
     const { fitView } = useReactFlow();
 
+    const [seenVideoIds, setSeenVideoIds] = useState<string[]>([]);
+
+    // Handle video seen
+    const handleVideoSeen = useCallback((id: string) => {
+        setSeenVideoIds((prev) => {
+            if (prev.includes(id)) return prev;
+            return [...prev, id];
+        });
+    }, []);
+
     // Handle initial goal submission (one API call handles sieve + cache + generate)
     const handleInitialize = useCallback(async (goal: string, clarified?: boolean) => {
+
         setOriginTopic(goal);
         setIsLoadingGoal(true);
         setChoiceChips(null);
@@ -520,6 +531,8 @@ function NexusCanvasInner() {
                 node={activeNode}
                 onClose={handleCloseWorkspace}
                 originTopic={originTopic}
+                seenVideoIds={seenVideoIds}
+                onVideoSeen={handleVideoSeen}
             />
         </div>
     );
