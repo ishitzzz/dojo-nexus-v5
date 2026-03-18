@@ -15,7 +15,7 @@
  * API CALLS: 1 yt-search per gap (free), optional Gemini rerank per gap.
  */
 
-import ytSearch from "yt-search";
+import ytSearch from "../core/youtubeSearch.js";
 import Fuse from "fuse.js";
 import type {
     AnchorPlaylist,

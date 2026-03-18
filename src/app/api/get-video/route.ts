@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import yts from "yt-search";
+import { searchVideos } from "@/utils/youtubeApi";
+import type { LearningTopology } from "@/utils/topologyInference";
 import {
   VideoCandidate,
   rankByDensity,
@@ -69,6 +70,26 @@ export async function GET(request: Request) {
   const previousTopic = searchParams.get("previousTopic");
   const excludeIdsParam = searchParams.get("excludeIds");
   const excludeIds = excludeIdsParam ? excludeIdsParam.split(",") : [];
+  let topology: LearningTopology | undefined;
+
+  const topologyParam = searchParams.get("topology");
+  if (topologyParam) {
+    try {
+      topology = JSON.parse(topologyParam) as LearningTopology;
+    } catch (_e) {
+      topology = undefined;
+    }
+  } else {
+    try {
+      const rawBody = await request.text();
+      if (rawBody) {
+        const parsedBody = JSON.parse(rawBody) as { topology?: LearningTopology };
+        topology = parsedBody.topology;
+      }
+    } catch (_e) {
+      topology = undefined;
+    }
+  }
 
   if (!query) {
     return NextResponse.json({
@@ -137,11 +158,11 @@ export async function GET(request: Request) {
     if (preferredChannel) {
       console.log(`⚓ Attempting Anchor Channel search for: ${preferredChannel}`);
       const anchorQuery = `"${preferredChannel}" ${query}`;
-      const anchorResult = await yts(anchorQuery);
+      const anchorResult = await searchVideos(anchorQuery, { maxResults: CONFIG.INITIAL_FETCH_COUNT }, topology);
 
-      if (anchorResult.videos && anchorResult.videos.length > 0) {
+      if (anchorResult.length > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const anchorVideos = anchorResult.videos.filter((v: any) =>
+        const anchorVideos = anchorResult.filter((v: any) =>
           v.author.name.toLowerCase().includes(preferredChannel.toLowerCase()) ||
           v.title.toLowerCase().includes(preferredChannel.toLowerCase())
         );
@@ -156,9 +177,9 @@ export async function GET(request: Request) {
 
     // --- TIER 1: SMART PRIMARY QUERY ---
     if (rawVideos.length === 0) {
-      const primaryResult = await yts(smartQuery.primary);
-      if (primaryResult.videos && primaryResult.videos.length > 0) {
-        rawVideos = primaryResult.videos;
+      const primaryResult = await searchVideos(smartQuery.primary, { maxResults: CONFIG.INITIAL_FETCH_COUNT }, topology);
+      if (primaryResult.length > 0) {
+        rawVideos = primaryResult;
         searchTierUsed = "smart_primary";
       }
     }
@@ -166,9 +187,9 @@ export async function GET(request: Request) {
     // --- TIER 2: FALLBACK QUERY (just subjects) ---
     if (rawVideos.length === 0) {
       console.warn("⚠️ Primary query returned 0. Trying fallback...");
-      const fallbackResult = await yts(smartQuery.fallback);
-      if (fallbackResult.videos && fallbackResult.videos.length > 0) {
-        rawVideos = fallbackResult.videos;
+      const fallbackResult = await searchVideos(smartQuery.fallback, { maxResults: CONFIG.INITIAL_FETCH_COUNT }, topology);
+      if (fallbackResult.length > 0) {
+        rawVideos = fallbackResult;
         searchTierUsed = "smart_fallback";
       }
     }
@@ -176,9 +197,9 @@ export async function GET(request: Request) {
     // --- TIER 3: RAW QUERY (last resort) ---
     if (rawVideos.length === 0) {
       console.warn("⚠️ Fallback returned 0. Using raw query...");
-      const rawResult = await yts(query);
-      if (rawResult.videos && rawResult.videos.length > 0) {
-        rawVideos = rawResult.videos;
+      const rawResult = await searchVideos(query, { maxResults: CONFIG.INITIAL_FETCH_COUNT }, topology);
+      if (rawResult.length > 0) {
+        rawVideos = rawResult;
         searchTierUsed = "raw_query";
       } else {
         return NextResponse.json({

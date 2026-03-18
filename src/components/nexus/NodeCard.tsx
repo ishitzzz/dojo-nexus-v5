@@ -20,13 +20,15 @@ interface NodeCardData {
     content?: NodeContent;
     status: "ghost" | "active" | "mastered";
     zoomLevel: number;
+    visitCount: number;
     onExpand: (question: string) => void;
     onOpen: () => void;
+    onLaunchCourse: () => void;
 }
 
 function NodeCard({ data }: NodeProps<NodeCardData>) {
     const [followUpInput, setFollowUpInput] = useState("");
-    const { title, summary, content, status, zoomLevel, onExpand, onOpen } = data;
+    const { title, summary, content, status, zoomLevel, visitCount, onExpand, onOpen, onLaunchCourse } = data;
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -57,6 +59,7 @@ function NodeCard({ data }: NodeProps<NodeCardData>) {
         group relative rounded-3xl border-2 backdrop-blur-lg transition-all duration-300 cursor-pointer
         hover:shadow-2xl hover:border-teal-400/70
         ${statusStyles[status]}
+        ${visitCount >= 3 ? "ring-2 ring-teal-400 ring-offset-2 ring-offset-gray-900 animate-pulse" : ""}
         ${showFullContent ? 'p-6 min-w-[340px] max-w-[400px]' : 'p-4 min-w-[260px] max-w-[320px]'}
       `}
             onClick={status !== "ghost" ? onOpen : undefined}
@@ -103,17 +106,33 @@ function NodeCard({ data }: NodeProps<NodeCardData>) {
 
             {/* Ask Follow-Up Input */}
             {showFollowUp && (
-                <div className="pt-4 border-t border-gray-700/50">
-                    <input
-                        type="text"
-                        value={followUpInput}
-                        onChange={(e) => setFollowUpInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        onClick={(e) => e.stopPropagation()}
-                        placeholder="Ask a question..."
-                        className="w-full bg-gray-800/60 border border-gray-600 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-teal-400 focus:bg-gray-800/80 transition-all"
-                    />
-                </div>
+                <>
+                    <div className="pt-4 border-t border-gray-700/50">
+                        <input
+                            type="text"
+                            value={followUpInput}
+                            onChange={(e) => setFollowUpInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder="Ask a question..."
+                            className="w-full bg-gray-800/60 border border-gray-600 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-teal-400 focus:bg-gray-800/80 transition-all"
+                        />
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-700/40">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onLaunchCourse(); }}
+                            className="w-full text-left text-xs text-gray-500 
+               hover:text-teal-400 transition-colors 
+               flex items-center gap-1.5 group"
+                            title="Generate a full learning path starting from this concept"
+                        >
+                            <span className="group-hover:translate-y-px transition-transform text-base leading-none">
+                                ↓
+                            </span>
+                            Build a full course from here
+                        </button>
+                    </div>
+                </>
             )}
 
             {/* Ghost Node CTA */}

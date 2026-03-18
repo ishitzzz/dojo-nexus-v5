@@ -2,6 +2,27 @@ import { generateContentWithFailover } from "@/utils/gemini";
 import { BACKUP_ROADMAPS } from "@/data/backupRoadmaps";
 import { NextResponse } from "next/server";
 import { safeParseJsonObject } from "@/utils/safeJsonParser";
+import { inferTopology } from "@/utils/topologyInference";
+
+function extractTopicsFromSkeleton(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any
+): string[] {
+  if (!Array.isArray(data?.modules)) return [];
+
+  const topics: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const moduleItem of data.modules as any[]) {
+    if (!Array.isArray(moduleItem?.chapters)) continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const chapter of moduleItem.chapters as any[]) {
+      const topic = (chapter?.youtubeQuery || chapter?.chapterTitle || "").trim();
+      if (topic) topics.push(topic);
+    }
+  }
+
+  return topics;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // WEB CONTEXT (Keep for grounding)
@@ -25,7 +46,21 @@ export async function POST(req: Request) {
 
   try {
     body = await req.json();
-    const { userGoal, experienceLevel = "Deep Dive", mode = "skeleton", moduleContext } = body;
+    const {
+      userGoal,
+      experienceLevel = "Deep Dive",
+      mode = "skeleton",
+      moduleContext,
+      nexusOrigin,
+      nexusTrail,
+    } = body as {
+      userGoal: string;
+      experienceLevel?: string;
+      mode?: string;
+      moduleContext?: { moduleTitle?: string; previousModuleTitle?: string; moduleIndex?: number };
+      nexusOrigin?: string;
+      nexusTrail?: string;
+    };
 
     let prompt = "";
 
@@ -33,7 +68,38 @@ export async function POST(req: Request) {
     // MODE 1: SKELETON GENERATION (Global Architecture)
     // ═══════════════════════════════════════════════════════════════
     if (mode === "skeleton") {
+      const topology = await inferTopology(userGoal);
       const webContext = await getWebContext(userGoal);
+      const hasNexusContext = nexusTrail && nexusTrail.trim().length > 0;
+      const trailConcepts = hasNexusContext
+        ? nexusTrail.split(",").map((s: string) => s.trim()).filter(Boolean)
+        : [];
+      const nexusContextBlock = trailConcepts.length > 0
+        ? `
+        NEXUS CONTEXT — this is critical, do not ignore it:
+        This learner was freely exploring a knowledge graph before requesting
+        this course. They were not following a curriculum — they were
+        following their curiosity.
+
+        Their original curiosity started at: "${nexusOrigin || "unknown"}"
+        Concepts they have already encountered and have some intuition about:
+${trailConcepts.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}
+
+        RULES based on this context:
+        1. Do NOT start Module 1 as if they know nothing.
+           They have encountered these concepts already, even if informally.
+        2. Do NOT dedicate a full module to any concept already in their trail.
+           If it appears, acknowledge it briefly and move forward.
+        3. The narrativeBridge of Module 1 MUST explicitly reference where
+           they came from. Start with something like:
+           "You've been exploring ${nexusOrigin || "this topic"} —
+           now let's go underneath what you've seen..."
+        4. The overall tone should feel like continuing a conversation,
+           not starting a lecture.
+        5. For anchorChannel: prefer creators known for depth and genuine
+           intellectual engagement over pure step-by-step tutorial channels.
+        `
+        : "";
 
       prompt = `
         You are a "First Principles" Knowledge Architect building a CONTINUOUS learning path.
@@ -59,6 +125,30 @@ export async function POST(req: Request) {
         ANCHOR CHANNEL:
         Recommend ONE YouTube channel that covers this entire topic well.
         Examples: "Academind", "Fireship", "Web Dev Simplified", "Traversy Media", "Hussein Nasser"
+${nexusContextBlock}
+
+        TOPOLOGY CONTEXT:
+          structure: ${topology.structure}
+          primaryMode: ${topology.primaryMode}
+          hasCanonicalPath: ${topology.hasCanonicalPath}
+
+        IF hasCanonicalPath is false:
+          Build the roadmap as a series of PERSPECTIVES, not a strict sequence.
+          Each module represents a different angle of attack on the topic.
+          The narrativeBridge should explicitly say 'Another way in is...'
+
+        IF primaryMode is 'exploration':
+          The atomicTruth for each module should be phrased as a question,
+          not a statement. e.g. 'What made this civilization different?'
+          not 'Core characteristics of this civilization.'
+
+        IF structure is 'cyclical':
+          Add a note in narrativeBridge when concepts will be revisited:
+          'We will return to this with deeper understanding in Module X.'
+
+        IF primaryMode is 'skill':
+          Every chapter must have a youtubeQuery that includes action words:
+          'how to', 'build', 'implement', 'create', 'practice'
         
         RETURN JSON ONLY:
         {
@@ -153,6 +243,36 @@ export async function POST(req: Request) {
       throw new Error("Failed to parse valid roadmap JSON");
     }
 
+    if (mode === "skeleton") {
+      const extractedTopics = extractTopicsFromSkeleton(data);
+
+      try {
+        const requestUrl = new URL(req.url);
+        const playlistResponse = await fetch(`${requestUrl.origin}/api/build-playlist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            topic: userGoal,
+            tableOfContents: extractedTopics,
+            preferences: {
+              studentType: "undergrad",
+              language: "english",
+              learningMode: "from_scratch",
+            },
+          }),
+        });
+
+        if (playlistResponse.ok) {
+          data.playlist = await playlistResponse.json();
+        } else {
+          data.playlist = { error: "playlist_unavailable", entries: [] };
+        }
+      } catch (playlistError) {
+        console.warn("⚠️ Playlist enrichment failed:", playlistError);
+        data.playlist = { error: "playlist_unavailable", entries: [] };
+      }
+    }
+
     return NextResponse.json(data);
 
   } catch (error) {
@@ -176,4 +296,3 @@ export async function POST(req: Request) {
     }, { status: 500 });
   }
 }
-
