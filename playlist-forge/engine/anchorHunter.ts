@@ -16,7 +16,7 @@
  * API CALLS: 1-3 free yt-search calls. Zero quota cost.
  */
 
-import ytSearch from "yt-search";
+import ytSearch from "../core/youtubeSearch.js";
 import Fuse from "fuse.js";
 import type { AnchorPlaylist, AnchorVideo } from "../core/types.js";
 

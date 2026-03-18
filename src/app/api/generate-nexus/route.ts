@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { checkNexusCache, storeNexusCache } from "@/utils/nexusCache";
 import { sieveGoal } from "@/utils/contextSieve";
 import { safeParseJsonObject } from "@/utils/safeJsonParser";
+import { inferTopology } from "@/utils/topologyInference";
 
 // ═══════════════════════════════════════════════════════════════
 // GENERATE NEXUS API
@@ -14,6 +15,7 @@ interface NexusRequest {
   userGoal: string;
   personaId?: string;
   clarified?: boolean; // true when user clicked a Choice Chip
+  knownConcepts?: string;
 }
 
 
@@ -21,8 +23,14 @@ interface NexusRequest {
 /**
  * Builds the final response shape from raw LLM data.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildResponse(data: any) {
+function buildResponse(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any,
+  topology?: Awaited<ReturnType<typeof inferTopology>>,
+  knownConceptsList: string[] = []
+) {
+  const knownConceptSet = new Set(knownConceptsList.map((concept) => concept.trim().toLowerCase()));
+
   return {
     origin: {
       id: `origin-${Date.now()}`,
@@ -31,15 +39,20 @@ function buildResponse(data: any) {
       status: "active",
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    initialNodes: (data.initialNodes || []).map((node: any, index: number) => ({
-      id: `node-${Date.now()}-${index}`,
-      ...node,
-      position: {
-        x: index === 0 ? -400 : 400,
-        y: 350,
-      },
-      status: "ghost",
-    })),
+    initialNodes: (data.initialNodes || []).map((node: any, index: number) => {
+      const nodeTitle = String(node?.title || "").trim().toLowerCase();
+      const isKnownConcept = knownConceptSet.has(nodeTitle);
+
+      return {
+        id: `node-${Date.now()}-${index}`,
+        ...node,
+        position: {
+          x: index === 0 ? -400 : 400,
+          y: 350,
+        },
+        status: isKnownConcept ? "mastered" : "ghost",
+      };
+    }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     edges: (data.initialNodes || []).map((_node: any, index: number) => ({
       id: `edge-origin-${index}`,
@@ -49,6 +62,7 @@ function buildResponse(data: any) {
       label: index === 0 ? "Start Here" : "Then This",
     })),
     suggestedPaths: data.suggestedPaths || [],
+    topology,
   };
 }
 
@@ -56,6 +70,9 @@ export async function POST(req: Request) {
   try {
     const body: NexusRequest = await req.json();
     const { userGoal } = body;
+    const knownConceptsList = body.knownConcepts
+      ? body.knownConcepts.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [];
 
     if (!userGoal || userGoal.trim().length < 3) {
       return NextResponse.json(
@@ -63,6 +80,8 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    const topology = await inferTopology(userGoal);
 
     // ═══════════════════════════════════════════════════════════════
     // ILS Step 0: Context Sieve (Ambiguity Detection)
@@ -87,9 +106,21 @@ export async function POST(req: Request) {
     const cacheResult = await checkNexusCache(userGoal);
     if (cacheResult.found && cacheResult.data) {
       console.log(`🗄️ Nexus Cache HIT — skipping Gemini call for: "${userGoal.slice(0, 30)}..."`);
-      const response = buildResponse(cacheResult.data);
+      const response = buildResponse(cacheResult.data, topology, knownConceptsList);
       return NextResponse.json(response);
     }
+
+    const knownConceptsPromptBlock = knownConceptsList.length > 0
+      ? `
+KNOWN CONCEPTS — the user has already learned these:
+${knownConceptsList.join(", ")}
+
+Do NOT generate these as initial exploration nodes.
+Generate nodes that are the NEXT frontier beyond what they know.
+The ghost nodes should represent what comes AFTER their existing knowledge,
+not review of what they already understand.
+`
+      : "";
 
     // ═══════════════════════════════════════════════════════════════
     // No cache → Generate with Gemini
@@ -198,6 +229,45 @@ RETURN THIS JSON STRUCTURE:
   ]
 }
 
+LEARNING TOPOLOGY (use this to shape every decision):
+  structure: ${topology.structure}
+  contentNature: ${topology.contentNature}
+  bestEntryStrategy: ${topology.bestEntryStrategy}
+  timeDependent: ${topology.timeDependent}
+  suggestedNodeCount: ${topology.suggestedNodeCount}
+
+RULES:
+- Generate exactly ${topology.suggestedNodeCount} initial nodes
+- IF structure is 'sequential': nodes should feel ordered, edge labels like 'then', 'next step'
+- IF structure is 'web': nodes should feel like different lenses on the same thing, no implied order
+- IF contentNature is 'narrative': node titles should read like story beats e.g. 'Why Did Rome Actually Fall?' not 'Fall of Rome'
+- IF contentNature is 'technical': node titles should be precise and specific e.g. 'useState vs useReducer: When to Use Which'
+- IF timeDependent is true: include a period field on each node e.g. '~3500 BCE' or '1940s–1960s'
+- IF bestEntryStrategy is 'pick_your_thread': the suggested paths should be framed as QUESTIONS not topics
+
+For content sections inside each node:
+Do NOT use fixed headings like 'Simple Answer' or 'Going Deeper'.
+Instead generate 3-4 section headings that emerge naturally from what THIS specific node actually needs to communicate.
+The heading should make someone curious enough to read the body.
+Think: chapter titles in a great popular science book, not subheadings in a textbook.
+Always end with one section about something genuinely debated or unresolved about this topic.
+
+For suggestedPaths, ALWAYS include:
+  Path 1: The obvious next question
+  Path 2: A deeper version of the same question
+  Path 3: A surprising cross-domain connection — something that makes the user say 'wait, what?' Label this one with type: 'serendipity' in addition to the normal fields.
+
+For youtubeQuery on each node:
+  Use topology.videoStylePriority[0] to determine search style:
+  'documentary' → append 'documentary explained'
+  'lecture' → append 'lecture explained university'
+  'tutorial' → append 'tutorial beginner guide'
+  'debate' → append 'debate analysis perspectives'
+  'demonstration' → append 'walkthrough example'
+
+Current topology.videoStylePriority[0]: ${topology.videoStylePriority[0]}
+${knownConceptsPromptBlock}
+
 REMEMBER:
 - Simple language, no jargon
 - Detailed explanations (not one-liners)
@@ -227,7 +297,7 @@ REMEMBER:
     // ═══════════════════════════════════════════════════════════════
     await storeNexusCache(userGoal, data);
 
-    const response = buildResponse(data);
+    const response = buildResponse(data, topology, knownConceptsList);
     return NextResponse.json(response);
 
   } catch (error) {

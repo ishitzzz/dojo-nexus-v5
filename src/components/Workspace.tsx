@@ -8,7 +8,7 @@ import AIChat from "./AIChat";
 interface Chapter {
     chapterTitle: string;
     youtubeQuery: string;
-    quizQuestion: string;
+    quizQuestion?: string;
     toolType?: "mcq" | "cloze" | "analogy";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     gamePayload?: any;
@@ -17,6 +17,12 @@ interface Chapter {
 interface Module {
     moduleTitle: string;
     chapters: Chapter[];
+    playlist?: {
+        entries?: Array<{
+            videoId: string;
+            topicMatched: string;
+        }>;
+    };
 }
 
 interface UserContext {
@@ -65,6 +71,20 @@ export default function Workspace({ module, onBack, userContext, anchorChannel, 
             setVideoId(null);
             setVideoMeta(null);
             try {
+                const normalizedQuery = (activeChapter.youtubeQuery || "").trim().toLowerCase();
+                const playlistMatch = module.playlist?.entries?.find((entry) =>
+                    (entry.topicMatched || "").trim().toLowerCase() === normalizedQuery
+                );
+
+                if (playlistMatch?.videoId) {
+                    setVideoId(playlistMatch.videoId);
+                    if (!seenVideoIds.includes(playlistMatch.videoId)) {
+                        onVideoSeen(playlistMatch.videoId);
+                    }
+                    console.log("🎬 Video selected via: module_playlist");
+                    return;
+                }
+
                 // NEW: Include role, experience, AND anchorChannel for continuity
                 const params = new URLSearchParams({
                     q: activeChapter.youtubeQuery,
@@ -105,7 +125,7 @@ export default function Workspace({ module, onBack, userContext, anchorChannel, 
             }
         };
         fetchVideo();
-    }, [activeChapter, videoModifier, role, experience]);
+    }, [activeChapter, videoModifier, role, experience, module, seenVideoIds, onVideoSeen, anchorChannel]);
 
     useEffect(() => {
         const fetchContent = async () => {
