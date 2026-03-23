@@ -48,19 +48,39 @@ export async function POST(req: Request) {
     body = await req.json();
     const {
       userGoal,
-      experienceLevel = "Deep Dive",
+      goal,
+      domainType,
+      priorKnowledge,
+      timeContext,
+      successDefinition,
       mode = "skeleton",
       moduleContext,
       nexusOrigin,
       nexusTrail,
     } = body as {
       userGoal: string;
-      experienceLevel?: string;
+      goal?: string;
+      domainType?: string;
+      priorKnowledge?: string;
+      timeContext?: string | { type: string; date: string };
+      successDefinition?: string;
       mode?: string;
       moduleContext?: { moduleTitle?: string; previousModuleTitle?: string; moduleIndex?: number };
       nexusOrigin?: string;
       nexusTrail?: string;
     };
+
+    // Build learner profile from context signals
+    const timeStr = typeof timeContext === 'object' && timeContext?.date
+      ? `Deadline: ${timeContext.date}`
+      : timeContext === 'open-ended' ? 'No deadline — learning at their own pace' : 'No time constraint specified';
+    const learnerProfile = [
+      goal ? `GOAL: ${goal}` : null,
+      domainType ? `DOMAIN: ${domainType}` : null,
+      priorKnowledge ? `PRIOR KNOWLEDGE: ${priorKnowledge}` : null,
+      `TIME: ${timeStr}`,
+      successDefinition ? `SUCCESS LOOKS LIKE: ${successDefinition}` : null,
+    ].filter(Boolean).join('\n        ');
 
     let prompt = "";
 
@@ -105,8 +125,10 @@ ${trailConcepts.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}
         You are a "First Principles" Knowledge Architect building a CONTINUOUS learning path.
         
         GOAL: Create an "Evolutionary Chain" for: "${userGoal}"
-        CONTEXT: ${webContext}
-        LEVEL: ${experienceLevel}
+        WEB CONTEXT: ${webContext}
+
+        LEARNER PROFILE:
+        ${learnerProfile || 'No detailed profile available — use general approach.'}
 
         TASK: Generate the COURSE ARCHITECTURE (Skeleton).
         
@@ -114,13 +136,17 @@ ${trailConcepts.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}
         To save the user time, you MUST fully generate the chapters for MODULE 1 and MODULE 2 immediately.
         For Module 3 onwards, generate ONLY the title and description (Skeleton).
 
-        CRITICAL RULE - CONTINUITY:
+        CRITICAL RULE - CONTINUITY & COHERENCE:
         Each module MUST be a direct continuation of the previous one.
-        Structure it like a dependency graph:
-        1. Primitive State (The "Hello World" / No-Framework era)
-        2. The First Problem (Why the primitive state fails)
-        3. The Abstraction (The modern solution)
-        4. The Optimization (Advanced patterns)
+        Every chapter in a module must belong to the same conceptual stage. A module about memory management cannot contain a chapter about I/O formatting. If unrelated, create a new module.
+
+        CRITICAL RULE - CHAPTER SEQUENCE:
+        Each chapter must explicitly depend on the previous one. Before generating the next chapter title, ask what concept the previous chapter established. If a learner wouldn't be ready for the next one, an intermediate chapter is required. No jumping from variables to structs without covering pointers first.
+
+        CRITICAL RULE - YOUTUBE QUERIES:
+        Every single query MUST contain the exact core topic ("${userGoal}") as a prefix. Never generate a query for a sub-concept without its parent language.
+        Bad: "enum function tutorial". Good: "${userGoal} enum function tutorial explained".
+        Bad: "linked list implementation". Good: "${userGoal} linked list implementation from scratch".
 
         ANCHOR CHANNEL:
         Recommend ONE YouTube channel that covers this entire topic well.
@@ -199,18 +225,23 @@ ${nexusContextBlock}
         INSTRUCTION:
         Break this module down into 3-5 atomic chapters.
         
-        EVOLUTIONARY PACING RULES (CRITICAL):
+        EVOLUTIONARY PACING RULES & COHERENCE (CRITICAL):
+        - Every chapter in a module must belong to the same conceptual stage. If unrelated, create a new module instead.
         - IF this is Module 1 or 2: FOCUS ON CONCEPTS. Explain "Why" and "What" before "How". Use analogies.
         - IF this is Module 3, 4, or 5: FOCUS ON IMPLEMENTATION. Detailed "How-To", code, setup.
         - IF this is Module 6+: FOCUS ON MASTERY. Optimization, scaling, rare edge cases.
 
+        CRITICAL RULE - CHAPTER SEQUENCE:
+        Each chapter must explicitly depend on the previous one. Ask yourself what concept the previous chapter established. If a learner wouldn't be ready for the next one, an intermediate chapter is required. No jumping concepts.
+
         YOUTUBE QUERY RULES:
-        1. Be ULTRA-SPECIFIC. Include technical terms.
-        2. Based on the PACING RULE above:
+        1. Every single query MUST contain the exact core topic ("${userGoal}") as a prefix. Never generate a query for a sub-concept without its parent language or domain.
+        Bad: "enum function tutorial". Good: "${userGoal} enum function tutorial explained".
+        2. Be ULTRA-SPECIFIC. Include technical terms.
+        3. Based on the PACING RULE above:
            - Concept Phase: Append "explained visually", "theory", or "basics".
            - Implementation Phase: Append "tutorial", "code", "implementation", or "guide".
            - Mastery Phase: Append "advanced", "deep dive", "optimization".
-        3. ALWAYS include the main topic ("${userGoal}") in the query.
 
         RETURN JSON ONLY:
         {
@@ -243,6 +274,27 @@ ${nexusContextBlock}
       throw new Error("Failed to parse valid roadmap JSON");
     }
 
+    const t = userGoal.toLowerCase();
+    const foreign = ['typescript', 'javascript', 'python', 'java', 'c++', 'rust', 'go'];
+    (data.modules || []).forEach((m: any) => {
+      if (!Array.isArray(m.chapters)) return;
+      if (m.chapters.length > 0 && (m.chapters.length < 2 || m.chapters.length > 6)) {
+        console.warn(`[Validation] Module has ${m.chapters.length} chapters, should be 2-6`);
+      }
+      m.chapters.forEach((c: any) => {
+        const q = c.youtubeQuery?.toLowerCase() || "";
+        const title = c.chapterTitle?.toLowerCase() || "";
+        const qTokens = q.split(/[^a-z0-9+#]/);
+        const hasTopic = t.split(' ').some(w => w.length > 2 ? q.includes(w) : qTokens.includes(w));
+        const wrongLang = foreign.some(lang => title.includes(lang) && !t.includes(lang));
+        if (!hasTopic || wrongLang) {
+          const old = c.youtubeQuery;
+          c.youtubeQuery = `${userGoal} ${old || c.chapterTitle || ""}`.trim();
+          console.warn(`[Validation Fix] Bad query: "${old}" -> Corrected: "${c.youtubeQuery}"`);
+        }
+      });
+    });
+
     if (mode === "skeleton") {
       const extractedTopics = extractTopicsFromSkeleton(data);
 
@@ -255,9 +307,9 @@ ${nexusContextBlock}
             topic: userGoal,
             tableOfContents: extractedTopics,
             preferences: {
-              studentType: "undergrad",
+              domainType: domainType || "technical",
+              priorKnowledge: priorKnowledge || "none",
               language: "english",
-              learningMode: "from_scratch",
             },
           }),
         });
