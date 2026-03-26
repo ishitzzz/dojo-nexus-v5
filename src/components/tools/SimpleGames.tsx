@@ -76,7 +76,7 @@ export function MCQGame({ data, onComplete }: GameProps<MCQPayload>) {
       </div>
       
       {!result?.correct && (
-         <button onClick={checkAnswer} disabled={!selected || grading} className="mt-6 w-full py-3 bg-teal-500 hover:bg-teal-400 text-black font-bold rounded disabled:opacity-50">
+         <button onClick={checkAnswer} disabled={!selected || grading} className="mt-6 w-full py-3 bg-[#6366F1] hover:bg-[#818CF8] text-black font-bold rounded disabled:opacity-50">
            {grading ? "AI is Grading..." : "Check Answer"}
          </button>
       )}
@@ -130,7 +130,7 @@ export function ClozeGame({ data, onComplete }: GameProps<ClozePayload>) {
     return (
       <div className="p-6 bg-gray-900 rounded-xl border border-gray-700 text-center">
         <div className="mb-8">
-            <span className="text-xs font-mono text-teal-500 uppercase tracking-widest">Concept Check</span>
+            <span className="text-xs font-mono text-[#6366F1] uppercase tracking-widest">Concept Check</span>
             <p className="text-gray-400 text-sm mt-1">Fill in the missing words.</p>
         </div>
 
@@ -162,7 +162,7 @@ export function ClozeGame({ data, onComplete }: GameProps<ClozePayload>) {
         </h3>
   
         {!result?.correct && (
-            <button onClick={handleSubmit} disabled={grading} className="mt-4 px-8 py-3 bg-teal-500 text-black font-bold rounded hover:bg-teal-400 disabled:opacity-50">
+            <button onClick={handleSubmit} disabled={grading} className="mt-4 px-8 py-3 bg-[#6366F1] text-black font-bold rounded hover:bg-[#818CF8] disabled:opacity-50">
                 {grading ? "Analyzing..." : "Check Answer"}
             </button>
         )}

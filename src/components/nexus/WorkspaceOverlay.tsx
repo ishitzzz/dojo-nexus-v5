@@ -15,7 +15,6 @@ interface WorkspaceOverlayProps {
 }
 
 export default function WorkspaceOverlay({ node, onClose, originTopic, seenVideoIds, onVideoSeen }: WorkspaceOverlayProps) {
-    // Convert KnowledgeNode to Workspace module format
     const module = node
         ? {
             moduleTitle: node.title,
@@ -49,45 +48,38 @@ export default function WorkspaceOverlay({ node, onClose, originTopic, seenVideo
                     className="fixed inset-0 z-50 flex items-center justify-center p-4"
                     onClick={handleBackdropClick}
                 >
-                    {/* Backdrop with heavy blur */}
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl" />
+                    <div className="absolute inset-0 bg-[#09090B]/90" />
 
-                    {/* Full-Screen Workspace Panel */}
                     <motion.div
-                        initial={{ scale: 0.98, opacity: 0, y: 20 }}
-                        animate={{ scale: 1, opacity: 1, y: 0 }}
-                        exit={{ scale: 0.98, opacity: 0, y: 20 }}
-                        transition={{ duration: 0.3, ease: "easeOut" }}
-                        className="relative w-[95vw] h-[95vh] bg-gray-900 rounded-2xl border border-gray-700/50 overflow-hidden shadow-2xl flex flex-col"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="nexus-workspace-overlay relative w-[95vw] h-[95vh] bg-[#111114] rounded-lg border border-[#1C1C21] overflow-hidden flex flex-col"
                     >
-                        {/* Close Button */}
                         <button
                             onClick={onClose}
-                            className="absolute top-6 right-6 z-50 w-12 h-12 flex items-center justify-center rounded-full bg-gray-800 hover:bg-red-600 border border-gray-600 hover:border-red-500 text-gray-300 hover:text-white transition-all duration-200 group"
+                            className="absolute top-5 right-5 z-50 w-10 h-10 flex items-center justify-center rounded-lg bg-[#09090B] hover:bg-red-500/10 border border-[#1C1C21] hover:border-red-500/30 text-[#71717A] hover:text-red-400"
+                            style={{ transition: "all 150ms ease" }}
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
 
-                        {/* Minimal Header */}
-                        <div className="px-8 py-5 bg-gradient-to-b from-gray-900 via-gray-900/90 to-transparent flex-shrink-0 pr-20">
-                            <h2 className="text-xl font-bold text-white truncate">{node.title}</h2>
-                            <p className="text-sm text-gray-400 mt-1 line-clamp-1">{node.summary}</p>
+                        <div className="px-6 py-4 border-b border-[#1C1C21] flex-shrink-0 pr-16">
+                            <h2 className="text-lg font-semibold text-[#F4F4F5] truncate">{node.title}</h2>
+                            <p className="text-sm text-[#71717A] mt-0.5 line-clamp-1">{node.summary}</p>
                         </div>
 
-                        {/* Content Area — Video + Resource Hub side by side */}
-                        <div className="flex-1 overflow-y-auto">
+                        <div className="flex-1 overflow-hidden">
                             <div className="flex flex-col lg:flex-row h-full">
-                                {/* Left: Video Workspace (main content) */}
-                                <div className="flex-1 min-h-[50vh] lg:min-h-0">
+                                <div className="flex-1 min-h-[50vh] lg:min-h-0 overflow-hidden flex flex-col">
                                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                     <Workspace
                                         module={module as any}
                                         onBack={onClose}
                                         userContext={{
-                                            role: "Student",
-                                            experience: "Beginner",
                                             topic: originTopic,
                                         }}
                                         anchorChannel={null}
@@ -96,13 +88,14 @@ export default function WorkspaceOverlay({ node, onClose, originTopic, seenVideo
                                     />
                                 </div>
 
-                                {/* Right: Resource Hub (supplementary) */}
-                                <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-gray-800 p-4 overflow-y-auto">
-                                    <ResourceHub
-                                        topic={originTopic}
-                                        nodeTitle={node.title}
-                                        isVisible={true}
-                                    />
+                                <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-[#1C1C21] overflow-hidden flex flex-col">
+                                    <div className="overflow-y-auto max-h-full p-4">
+                                        <ResourceHub
+                                            topic={originTopic}
+                                            nodeTitle={node.title}
+                                            isVisible={true}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>

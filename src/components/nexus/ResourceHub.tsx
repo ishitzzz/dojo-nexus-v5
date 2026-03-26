@@ -12,7 +12,7 @@
  * - JIT-loaded per node
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ═══════════════════════════════════════════════════════════════
@@ -92,7 +92,7 @@ function ResourceLoader({ nodeTitle }: { nodeTitle: string }) {
                 {[0, 1, 2, 3, 4].map(i => (
                     <motion.div
                         key={i}
-                        className="w-2 h-2 rounded-full bg-teal-500"
+                        className="w-2 h-2 rounded-full bg-[#6366F1]"
                         animate={{
                             scale: [1, 1.5, 1],
                             opacity: [0.3, 1, 0.3],
@@ -216,7 +216,7 @@ function getTypeColor(type: string): { border: string; text: string; bg: string 
         blog_post: { border: "hover:border-rose-500/40", text: "text-rose-400", bg: "bg-rose-500/10" },
         tool: { border: "hover:border-emerald-500/40", text: "text-emerald-400", bg: "bg-emerald-500/10" },
     };
-    return colors[type] || { border: "hover:border-teal-500/40", text: "text-teal-400", bg: "bg-teal-500/10" };
+    return colors[type] || { border: "hover:border-[#6366F1]/40", text: "text-[#818CF8]", bg: "bg-[#6366F1]/10" };
 }
 
 function WebResourceCard({ resource, index }: { resource: WebResource; index: number }) {
@@ -246,7 +246,7 @@ function WebResourceCard({ resource, index }: { resource: WebResource; index: nu
             </div>
 
             {/* Title */}
-            <h4 className="text-sm font-medium text-white group-hover:text-teal-300 transition-colors line-clamp-2 mb-1.5 leading-tight">
+            <h4 className="text-sm font-medium text-white group-hover:text-[#818CF8] transition-colors line-clamp-2 mb-1.5 leading-tight">
                 {resource.title}
             </h4>
 
@@ -283,11 +283,15 @@ function WebResourceCard({ resource, index }: { resource: WebResource; index: nu
 export default function ResourceHub({ topic, nodeTitle, isVisible }: ResourceHubProps) {
     const [data, setData] = useState<ResourceHubData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [loadedFor, setLoadedFor] = useState("");
     const [error, setError] = useState<string | null>(null);
 
-    const fetchResources = useCallback(async () => {
-        if (!nodeTitle || loadedFor === nodeTitle) return;
+    // Use a ref for the guard — avoids putting it in useCallback deps which causes infinite loops
+    const loadedForRef = useRef<string>("");
+    const [loadedForDisplay, setLoadedForDisplay] = useState(""); // only for retry button
+
+    const fetchResources = useCallback(async (force = false) => {
+        if (!nodeTitle) return;
+        if (!force && loadedForRef.current === nodeTitle) return; // already loaded
 
         setIsLoading(true);
         setError(null);
@@ -303,19 +307,24 @@ export default function ResourceHub({ topic, nodeTitle, isVisible }: ResourceHub
 
             const result = await response.json();
             setData(result);
-            setLoadedFor(nodeTitle);
+            loadedForRef.current = nodeTitle;
+            setLoadedForDisplay(nodeTitle);
         } catch (err) {
             console.warn("Resource Hub fetch failed:", err);
             setError("Failed to load resources. They'll appear when available.");
         } finally {
             setIsLoading(false);
         }
-    }, [nodeTitle, topic, loadedFor]);
+    // Only recreate when topic/nodeTitle change — NOT when loadedFor changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nodeTitle, topic]);
 
     useEffect(() => {
         if (isVisible && nodeTitle) {
             fetchResources();
         }
+    // fetchResources is stable per nodeTitle change; don't add loadedForDisplay here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isVisible, nodeTitle, fetchResources]);
 
     if (!isVisible) return null;
@@ -339,8 +348,8 @@ export default function ResourceHub({ topic, nodeTitle, isVisible }: ResourceHub
             <div className="h-full flex flex-col items-center justify-center px-4">
                 <p className="text-gray-500 text-sm text-center">{error}</p>
                 <button
-                    onClick={() => { setLoadedFor(""); fetchResources(); }}
-                    className="mt-3 text-teal-400 text-xs hover:text-teal-300 transition-colors cursor-pointer"
+                    onClick={() => { loadedForRef.current = ""; fetchResources(true); }}
+                    className="mt-3 text-[#818CF8] text-xs hover:text-[#818CF8] transition-colors cursor-pointer"
                 >
                     Try again →
                 </button>

@@ -196,17 +196,17 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
     };
 
     return (
-        <div className="flex flex-col h-full bg-gray-900/40 rounded-lg border border-gray-800">
+        <div className="flex flex-col h-full bg-[#111114] rounded-lg border border-[#1C1C21]">
             {/* Header */}
-            <div className="p-4 border-b border-gray-800">
+            <div className="p-4 border-b border-[#1C1C21]">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-[#F4F4F5] flex items-center gap-2">
                             🤖 AI Companion
                             {transcriptLoading && <span className="text-xs text-gray-500 animate-pulse">(Loading transcript...)</span>}
-                            {transcript && <span className="text-xs text-teal-500">✓ Transcript loaded</span>}
+                            {transcript && <span className="text-xs text-[#6366F1]">✓ Transcript loaded</span>}
                         </h3>
-                        <p className="text-xs text-gray-500 mt-1">Ask me anything about this video or concept</p>
+                        <p className="text-xs text-[#3F3F46] mt-1">Ask me anything about this video or concept</p>
                     </div>
                     <div>
                         <input
@@ -219,7 +219,7 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
                         />
                         <label
                             htmlFor="screenshot-upload"
-                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                            className="px-3 py-1.5 bg-[#6366F1] hover:bg-[#818CF8] text-white rounded-md text-xs font-medium flex items-center gap-1 cursor-pointer" style={{ transition: 'background-color 150ms ease' }}
                             title="Upload a screenshot to explain"
                         >
                             📸 Upload Screenshot
@@ -231,11 +231,11 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                 {messages.length === 0 && (
-                    <div className="text-center text-gray-500 text-sm mt-8">
+                    <div className="text-center text-[#3F3F46] text-sm mt-8">
                         <p className="mb-2">👋 Hi! I'm your AI tutor.</p>
                         <p className="text-xs">Try asking:</p>
                         <div className="mt-3 space-y-2">
-                            <div className="bg-gray-800/50 p-2 rounded text-xs text-gray-400">
+                            <div className="bg-[#09090B] p-2 rounded-md text-xs text-[#71717A]">
                                 "Can you explain this in simpler terms?"
                             </div>
                             <div className="bg-gray-800/50 p-2 rounded text-xs text-gray-400">
@@ -249,15 +249,16 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
                     {messages.map((msg, i) => (
                         <motion.div
                             key={i}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
                             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                         >
                             <div
                                 className={`max-w-[80%] p-3 rounded-lg text-sm ${msg.role === "user"
-                                    ? "bg-teal-600 text-white"
-                                    : "bg-gray-800 text-gray-200 border border-gray-700"
+                                    ? "bg-[#6366F1]/10 text-[#F4F4F5] border border-[#6366F1]/20"
+                                    : "bg-[#09090B] text-[#F4F4F5] border border-[#1C1C21]"
                                     }`}
                             >
                                 {msg.image && (
@@ -274,8 +275,8 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
                                         <ReactMarkdown
                                             remarkPlugins={[remarkGfm]}
                                             components={{
-                                                h1: ({ children }) => <h1 className="text-lg font-bold text-teal-400 mb-2 mt-4">{children}</h1>,
-                                                h2: ({ children }) => <h2 className="text-base font-bold text-teal-300 mb-2 mt-3">{children}</h2>,
+                                                h1: ({ children }) => <h1 className="text-lg font-semibold text-[#818CF8] mb-2 mt-4">{children}</h1>,
+                                                h2: ({ children }) => <h2 className="text-base font-semibold text-[#818CF8] mb-2 mt-3">{children}</h2>,
                                                 h3: ({ children }) => <h3 className="text-sm font-bold text-gray-100 mb-1 mt-2">{children}</h3>,
                                                 p: ({ children }) => <p className="mb-2 leading-relaxed">{children}</p>,
                                                 ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 ml-1">{children}</ul>,
@@ -284,7 +285,7 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
                                                 code: ({ children, className }) => {
                                                     const isInline = !className;
                                                     return isInline ? (
-                                                        <code className="bg-gray-700 px-1 py-0.5 rounded text-teal-200 font-mono text-xs">{children}</code>
+                                                        <code className="bg-[#1C1C21] px-1 py-0.5 rounded text-[#818CF8] font-mono text-xs">{children}</code>
                                                     ) : (
                                                         <div className="bg-[#0d1117] p-3 rounded-lg border border-gray-700 my-2 overflow-x-auto">
                                                             <code className="font-mono text-xs text-gray-300 block">{children}</code>
@@ -305,8 +306,8 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
 
                 {loading && (
                     <div className="flex justify-start">
-                        <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg text-sm text-gray-400 flex items-center gap-2">
-                            <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse"></div>
+                        <div className="bg-[#09090B] border border-[#1C1C21] p-3 rounded-lg text-sm text-[#71717A] flex items-center gap-2">
+                            <div className="w-2 h-2 bg-[#6366F1] rounded-full animate-pulse"></div>
                             Thinking...
                         </div>
                     </div>
@@ -316,7 +317,7 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-gray-800">
+            <div className="p-4 border-t border-[#1C1C21]">
                 <div className="flex gap-2">
                     <input
                         type="text"
@@ -325,12 +326,12 @@ export default function AIChat({ videoId, chapterTitle, moduleTitle, courseTitle
                         onKeyDown={(e) => e.key === "Enter" && handleSend()}
                         placeholder="Ask a question..."
                         disabled={loading}
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-teal-500 disabled:opacity-50"
+                        className="flex-1 bg-[#09090B] border border-[#1C1C21] rounded-md px-4 py-2 text-sm text-[#F4F4F5] placeholder-[#3F3F46] focus:outline-none focus:border-[#6366F1] disabled:opacity-50" style={{ transition: 'border-color 150ms ease' }}
                     />
                     <button
                         onClick={handleSend}
                         disabled={loading || !input.trim()}
-                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                        className="px-4 py-2 bg-[#6366F1] hover:bg-[#818CF8] disabled:bg-[#1C1C21] disabled:cursor-not-allowed text-white rounded-md text-sm font-medium" style={{ transition: 'background-color 150ms ease' }}
                     >
                         Send
                     </button>

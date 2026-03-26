@@ -33,7 +33,8 @@ const CONFIG = {
 };
 
 // Lightweight in-memory cache
-const QUICK_CACHE = new Map<string, { videoId: string; timestamp: number }>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const QUICK_CACHE = new Map<string, { videos?: any[], videoId?: string; timestamp: number }>();
 const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
 // ═══════════════════════════════════════════════════════════════
@@ -68,6 +69,7 @@ export async function GET(request: Request) {
   const experience = searchParams.get("experience") || "Deep Dive";
   const preferredChannel = searchParams.get("preferredChannel");
   const previousTopic = searchParams.get("previousTopic");
+  const playlistRef = searchParams.get("playlistRef");
   const excludeIdsParam = searchParams.get("excludeIds");
   const excludeIds = excludeIdsParam ? excludeIdsParam.split(",") : [];
   let topology: LearningTopology | undefined;
@@ -93,9 +95,8 @@ export async function GET(request: Request) {
 
   if (!query) {
     return NextResponse.json({
-      videoId: CONFIG.FALLBACK_VIDEO_ID,
-      source: "fallback",
-      reason: "No query provided"
+      videos: [{ videoId: CONFIG.FALLBACK_VIDEO_ID, title: "Fallback", channel: "System", duration: "0:00", reason: "No query provided", isPick: true }],
+      source: "fallback"
     });
   }
 
@@ -106,11 +107,15 @@ export async function GET(request: Request) {
   // ═══════════════════════════════════════════════════════════════
   const cached = QUICK_CACHE.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    if (!excludeIds.includes(cached.videoId)) {
+    const mainVideoId = cached.videos ? cached.videos[0].videoId : cached.videoId;
+    if (mainVideoId && !excludeIds.includes(mainVideoId)) {
       console.log(`⚡ Quick cache hit for: "${query.slice(0, 30)}..."`);
-      return NextResponse.json({ videoId: cached.videoId, source: "quick_cache" });
+      return NextResponse.json({ 
+        videos: cached.videos || [{ videoId: cached.videoId, title: "Cached Video", channel: "Vault", duration: "0:00", reason: "Loaded from cache", isPick: true }],
+        source: "quick_cache" 
+      });
     } else {
-      console.log(`🚫 Quick cache hit BUT excluded: ${cached.videoId}`);
+      console.log(`🚫 Quick cache hit BUT excluded: ${mainVideoId}`);
     }
   }
 
@@ -125,12 +130,19 @@ export async function GET(request: Request) {
 
     if (vaultResult.found && vaultResult.entry && !isExcluded) {
       console.log(`💾 Vault hit for: "${query.slice(0, 30)}..." -> ${vaultResult.entry.video_id}`);
-      QUICK_CACHE.set(cacheKey, { videoId: vaultResult.entry.video_id, timestamp: Date.now() });
-      return NextResponse.json({
+      const entryVid = {
         videoId: vaultResult.entry.video_id,
+        title: vaultResult.entry.title || "Vault Video",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        channel: vaultResult.entry.metadata ? (vaultResult.entry.metadata as any).author : "Unknown",
+        duration: "0:00",
+        reason: "Loaded from learning footprint",
+        isPick: true
+      };
+      QUICK_CACHE.set(cacheKey, { videos: [entryVid], timestamp: Date.now() });
+      return NextResponse.json({
+        videos: [entryVid],
         source: "video_vault",
-        densityScore: vaultResult.entry.density_score,
-        densityFlags: vaultResult.entry.density_flags,
       });
     } else if (isExcluded) {
       console.log(`🚫 Vault hit BUT excluded: ${vaultResult.entry?.video_id}`);
@@ -154,7 +166,7 @@ export async function GET(request: Request) {
     let rawVideos: any[] = [];
     let searchTierUsed = "smart_primary";
 
-    // --- TIER 0: ANCHOR CHANNEL ---
+    // --- TIER 0: ANCHOR CHANNEL (with relevance validation) ---
     if (preferredChannel) {
       console.log(`⚓ Attempting Anchor Channel search for: ${preferredChannel}`);
       const anchorQuery = `"${preferredChannel}" ${query}`;
@@ -168,9 +180,32 @@ export async function GET(request: Request) {
         );
 
         if (anchorVideos.length > 0) {
-          console.log(`✅ Anchor Channel found ${anchorVideos.length} videos.`);
-          rawVideos = anchorVideos;
-          searchTierUsed = "anchor_channel";
+          console.log(`⚓ Anchor Channel found ${anchorVideos.length} videos — validating relevance...`);
+
+          // Relevance check: anchor videos MUST match the query topic
+          // Otherwise the channel is poisoning results with off-topic content
+          const queryWords = smartQuery.subjects.length > 0
+            ? smartQuery.subjects
+            : query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const relevantAnchorVideos = anchorVideos.filter((v: any) => {
+            const title = v.title.toLowerCase();
+            const desc = (v.description || "").toLowerCase();
+            const combined = `${title} ${desc}`;
+            // At least 40% of query subjects must appear in title/description
+            const matchCount = queryWords.filter((w: string) => combined.includes(w.toLowerCase())).length;
+            const matchRatio = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            return matchRatio >= 0.4;
+          });
+
+          if (relevantAnchorVideos.length > 0) {
+            console.log(`✅ Anchor Channel: ${relevantAnchorVideos.length}/${anchorVideos.length} videos passed relevance check.`);
+            rawVideos = relevantAnchorVideos;
+            searchTierUsed = "anchor_channel";
+          } else {
+            console.log(`🚫 Anchor Channel SKIPPED: 0/${anchorVideos.length} videos matched topic "${query.slice(0, 40)}". Falling through to normal search.`);
+          }
         }
       }
     }
@@ -203,9 +238,15 @@ export async function GET(request: Request) {
         searchTierUsed = "raw_query";
       } else {
         return NextResponse.json({
-          videoId: CONFIG.FALLBACK_VIDEO_ID,
-          source: "fallback",
-          reason: "No results from YouTube (after all tiers)"
+          videos: [{
+            videoId: CONFIG.FALLBACK_VIDEO_ID,
+            title: "Fallback Options",
+            channel: "System",
+            duration: "0:00",
+            reason: "No results from YouTube",
+            isPick: true
+          }],
+          source: "fallback"
         });
       }
     }
@@ -226,6 +267,25 @@ export async function GET(request: Request) {
     }
 
     let candidates = toVideoCandidates(availableVideos, CONFIG.INITIAL_FETCH_COUNT);
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 5.25: 🚫 FILTER YOUTUBE SHORTS
+    // Shorts disrupt learning flow — eliminate them before any scoring
+    // ═══════════════════════════════════════════════════════════════
+    const beforeShortsFilter = candidates.length;
+    candidates = candidates.filter((v) => {
+      const titleLower = v.title.toLowerCase();
+      const descLower = v.description.toLowerCase();
+      // Hard duration cap: Shorts are ≤ 61s (YouTube Shorts max is 60s)
+      if (v.duration.seconds > 0 && v.duration.seconds <= 61) return false;
+      // Tag-based Shorts detection
+      if (titleLower.includes("#shorts") || titleLower.includes("#short")) return false;
+      if (descLower.includes("#shorts") || descLower.includes("#short")) return false;
+      return true;
+    });
+    if (candidates.length < beforeShortsFilter) {
+      console.log(`🚫 Shorts Filter: Removed ${beforeShortsFilter - candidates.length} Short(s) from ${beforeShortsFilter} candidates.`);
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // STEP 5.5: 🧬 ENRICHMENT (The Microscope)
@@ -293,7 +353,7 @@ export async function GET(request: Request) {
     // ═══════════════════════════════════════════════════════════════
     let relevantCandidates = candidates;
 
-    if (searchTierUsed !== "anchor_channel" && smartQuery.subjects.length > 0) {
+    if (smartQuery.subjects.length > 0) {
       const { passed, bestEffort } = filterByRelevance(
         candidates,
         smartQuery.subjects,
@@ -305,15 +365,11 @@ export async function GET(request: Request) {
     // ═══════════════════════════════════════════════════════════════
     // STEP 7: Duration filter + Density scoring
     // ═══════════════════════════════════════════════════════════════
-    let filteredCandidates = relevantCandidates;
-
-    if (searchTierUsed !== "anchor_channel") {
-      filteredCandidates = filterByDuration(relevantCandidates, CONFIG.MIN_VIDEO_DURATION);
-      if (modifier !== "detailed") {
-        filteredCandidates = filteredCandidates.filter(
-          (v) => v.duration.seconds <= CONFIG.MAX_VIDEO_DURATION
-        );
-      }
+    let filteredCandidates = filterByDuration(relevantCandidates, CONFIG.MIN_VIDEO_DURATION);
+    if (modifier !== "detailed") {
+      filteredCandidates = filteredCandidates.filter(
+        (v) => v.duration.seconds <= CONFIG.MAX_VIDEO_DURATION
+      );
     }
 
     if (filteredCandidates.length === 0) {
@@ -331,11 +387,12 @@ export async function GET(request: Request) {
     // STEP 8: Gemini Vibe-Check Reranker (AI only sees RELEVANT videos)
     // ═══════════════════════════════════════════════════════════════
     let selectedVideo: VideoCandidate | undefined;
-    let selectionSource = searchTierUsed === "anchor_channel" ? "anchor_preference" : "density_heuristic";
+    let selectionSource = "density_heuristic";
 
-    if (searchTierUsed === "anchor_channel" && rankedCandidates.length > 0) {
-      selectedVideo = rankedCandidates[0];
-      console.log(`⚓ Selected Anchor Video: ${selectedVideo?.title}`);
+    if (playlistRef && rankedCandidates.length > 0) {
+      selectedVideo = rankedCandidates.find(v => v.videoId === playlistRef) || rankedCandidates[0];
+      selectionSource = "playlist_match";
+      console.log(`🎬 Selected pre-computed playlist video: ${selectedVideo?.title}`);
     } else {
       const topCandidates = rankedCandidates.slice(0, CONFIG.RERANK_CANDIDATE_COUNT);
       const candidatesForLLM = prepareForLLMRerank(topCandidates);
@@ -377,9 +434,8 @@ export async function GET(request: Request) {
         selectionSource = "first_result_fallback";
       } else {
         return NextResponse.json({
-          videoId: "",
-          source: "no_results",
-          reason: "No videos found for this topic"
+          videos: [{ videoId: "", title: "", channel: "", duration: "", reason: "No videos found for this topic", isPick: false }],
+          source: "no_results"
         });
       }
     }
@@ -407,37 +463,52 @@ export async function GET(request: Request) {
 
     await storeInVideoVault(vaultEntry, query, userRole, experience);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const finalVideos: any[] = [];
+    if (selectedVideo) {
+      finalVideos.push({
+        videoId: selectedVideo.videoId,
+        title: selectedVideo.title,
+        channel: selectedVideo.author.name,
+        duration: selectedVideo.duration.timestamp,
+        reason: selectionSource === "gemini_rerank" ? "AI Pick - Best conceptual fit" : "Highest density match",
+        isPick: true
+      });
+    }
+
+    for (const cand of rankedCandidates) {
+      if (finalVideos.length >= 3) break;
+      if (cand.videoId === selectedVideo?.videoId) continue;
+      finalVideos.push({
+        videoId: cand.videoId,
+        title: cand.title,
+        channel: cand.author.name,
+        duration: cand.duration.timestamp,
+        reason: cand.densityScore && cand.densityScore > 0 ? `Good alternative (Score: ${cand.densityScore})` : "Alternative option",
+        isPick: false
+      });
+    }
+
     QUICK_CACHE.set(cacheKey, {
-      videoId: selectedVideo.videoId,
+      videos: finalVideos,
       timestamp: Date.now()
     });
 
     return NextResponse.json({
-      videoId: selectedVideo.videoId,
+      videos: finalVideos,
       source: selectionSource,
-      title: selectedVideo.title,
-      densityScore: selectedVideo.densityScore,
-      densityFlags: selectedVideo.densityFlags,
-      duration: selectedVideo.duration.timestamp,
       debug: {
         candidatesAnalyzed: rankedCandidates.length,
         usedAnchorChannel: searchTierUsed === "anchor_channel",
         searchTier: searchTierUsed,
-        queryIntelligence: {
-          intent: meaning.intent,
-          contentType: meaning.contentType,
-          subjects: smartQuery.subjects,
-          primaryQuery: smartQuery.primary,
-        },
       },
     });
 
   } catch (error) {
     console.error("❌ Video search pipeline error:", error);
     return NextResponse.json({
-      videoId: CONFIG.FALLBACK_VIDEO_ID,
+      videos: [{ videoId: CONFIG.FALLBACK_VIDEO_ID, title: "Error", channel: "System", duration: "0:00", reason: String(error), isPick: true }],
       source: "error_fallback",
-      reason: String(error),
     });
   }
 }

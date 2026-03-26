@@ -42,15 +42,27 @@ export async function vibeCheckRerank(
 
         const data = safeParseJsonObject<{ winnerId: string; reasoning: string }>(result.text);
 
-        if (data?.winnerId && data.winnerId.length === 11) {
+        if (data?.winnerId && data.winnerId.length >= 10 && data.winnerId.length <= 12) {
             return {
-                winnerId: data.winnerId,
+                winnerId: data.winnerId.trim(),
                 reasoning: data.reasoning || "Selected by Gemini Reranker",
                 fallbackUsed: false,
             };
         }
 
-        console.warn("⚠️ Could not parse Gemini response:", result.text);
+        // Try to recover: Gemini might return a wrapped/quoted ID
+        if (data?.winnerId) {
+            const cleaned = data.winnerId.replace(/['"` ]/g, "").trim();
+            if (cleaned.length >= 10 && cleaned.length <= 12) {
+                return {
+                    winnerId: cleaned,
+                    reasoning: data.reasoning || "Selected by Gemini Reranker",
+                    fallbackUsed: false,
+                };
+            }
+        }
+
+        console.warn("⚠️ Could not parse Gemini response:", result.text.slice(0, 100));
         return { winnerId: null, fallbackUsed: true };
 
     } catch (error) {

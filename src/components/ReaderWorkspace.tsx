@@ -51,7 +51,7 @@ export default function ReaderWorkspace({ pdfText }: { pdfText: string }) {
         {showTooltip && (
             <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                className="absolute bg-gray-900 border border-teal-500 rounded px-3 py-1 cursor-pointer hover:bg-teal-900 z-50 shadow-xl"
+                className="absolute bg-gray-900 border border-[#6366F1] rounded px-3 py-1 cursor-pointer hover:bg-[#6366F1]/10 z-50 shadow-xl"
                 style={{ top: tooltipPos.y, left: tooltipPos.x }}
                 onClick={handleExplain}
             >
@@ -62,12 +62,12 @@ export default function ReaderWorkspace({ pdfText }: { pdfText: string }) {
 
       {/* RIGHT: AI Sidebar (The Tutor) */}
       <div className="w-[400px] border-l border-gray-800 bg-gray-900 p-6 flex flex-col">
-         <h2 className="text-teal-400 font-bold uppercase tracking-widest text-xs mb-4">Smart Margin Notes</h2>
+         <h2 className="text-[#818CF8] font-bold uppercase tracking-widest text-xs mb-4">Smart Margin Notes</h2>
          
          {explanation ? (
              <div className="bg-black/50 p-4 rounded-xl border border-gray-700 animate-in fade-in">
                  {/* FIX: Replaced " with &quot; */}
-                 <div className="text-xs text-gray-500 mb-2 border-l-2 border-teal-500 pl-2 italic">
+                 <div className="text-xs text-gray-500 mb-2 border-l-2 border-[#6366F1] pl-2 italic">
                     &quot;{selectedText.slice(0, 50)}...&quot;
                  </div>
                  <p className="text-sm text-gray-200 leading-relaxed">{explanation}</p>

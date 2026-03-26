@@ -61,7 +61,7 @@ export default function AnalogyGame({ data, onComplete }: Props) {
   return (
     <div className="h-full flex flex-col">
        <div className="mb-6 text-center bg-gray-800/50 p-4 rounded-lg">
-        <span className="text-xs font-mono text-teal-500 uppercase tracking-widest">Analogy Mode</span>
+        <span className="text-xs font-mono text-[#6366F1] uppercase tracking-widest">Analogy Mode</span>
         <h3 className="text-xl font-bold text-white mt-1">Domain: {data.domain}</h3>
         <p className="text-gray-400 text-xs mt-2">
             👇 <strong>How to play:</strong> Tap a <span className="text-blue-400">Concept (Left)</span>, then tap its <span className="text-gray-300">Match (Right)</span>.
@@ -129,7 +129,7 @@ export default function AnalogyGame({ data, onComplete }: Props) {
             <button 
                 onClick={handleSubmit}
                 disabled={Object.keys(connections).length !== data.pairs.length} 
-                className="w-full py-3 bg-teal-500 text-black font-bold rounded hover:bg-teal-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="w-full py-3 bg-[#6366F1] text-black font-bold rounded hover:bg-[#818CF8] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
             >
                 Submit & Check
             </button>

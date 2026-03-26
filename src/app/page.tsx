@@ -1,210 +1,283 @@
 "use client";
 
-import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 
+// ─────────────────────────────────────────────────────────────
+// POSITIONAL CONTROLS — tweak these values to nudge any layer.
+// Positive translateX → right, negative → left
+// Positive translateY → down,  negative → up
+// ─────────────────────────────────────────────────────────────
+const POSITION = {
+  badge:    { x: 0,  y: 0  },   // "AI-Powered Learning OS" pill
+  heading:  { x: 0,  y: 0  },   // H1 main heading
+  subtitle: { x: 0,  y: 8  },   // one-liner below H1
+  ctas:     { x: 0,  y: 16 },   // button row
+  ticker:   { x: 0,  y: 0  },   // bottom tool ticker
+} as const;
+
+// ─────────────────────────────────────────────────────────────
+// TICKER CHIP — small labelled pill
+// ─────────────────────────────────────────────────────────────
+const TOOLS = ["Dojo", "Nexus", "Smart Reader", "Syllabus Sync", "AI Chat", "Feynman Mode", "Nexus Map"];
+
+function ToolTicker() {
+  return (
+    <div
+      className="flex items-center gap-3 overflow-x-auto pb-1 max-w-lg mx-auto"
+      style={{
+        transform: `translate(${POSITION.ticker.x}px, ${POSITION.ticker.y}px)`,
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
+      }}
+    >
+      {TOOLS.map((t) => (
+        <span
+          key={t}
+          className="shrink-0 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap"
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            color: "rgba(255,255,255,0.65)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          {t}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  const [exploreInput, setExploreInput] = useState("");
-
-  const [commitInput, setCommitInput] = useState("");
-  const [commitStep, setCommitStep] = useState<0 | 1 | 2>(0);
-  const [selectedRole, setSelectedRole] = useState("");
-  const [selectedGoal, setSelectedGoal] = useState("");
-
-  const [isUploading, setIsUploading] = useState(false);
-
-  const handleExplore = () => {
-    if (!exploreInput.trim()) return;
-    router.push(`/nexus?topic=${encodeURIComponent(exploreInput.trim())}`);
-  };
-
-  const handleCommitContinue = () => {
-    if (!commitInput.trim()) return;
-    setCommitStep(1);
-  };
-
-  const handleRoleSelect = (value: string) => {
-    setSelectedRole(value);
-    setCommitStep(2);
-  };
-
-  const handleGoalSelect = (value: string) => {
-    setSelectedGoal(value);
-    router.push(
-      `/roadmap?topic=${encodeURIComponent(commitInput.trim())}` +
-        `&role=${encodeURIComponent(selectedRole)}` +
-        `&experience=${encodeURIComponent(value)}`
-    );
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("mode", "syllabus");
-
-      const res = await fetch("/api/upload-syllabus", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      localStorage.setItem("generatedCourse", JSON.stringify(data));
-
-      router.push(
-        `/roadmap?topic=${encodeURIComponent(data.courseTitle || "Uploaded Syllabus")}` +
-          `&role=Student&experience=Deep Dive&fromSyllabus=true`
-      );
-    } finally {
-      setIsUploading(false);
-      event.target.value = "";
-    }
-  };
-
-  const pillBase = "px-4 py-2 rounded-full border text-sm transition-all";
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
-    <main className="min-h-screen bg-black bg-[radial-gradient(ellipse_at_center,_#0f172a_0%,_#000_70%)] flex items-center justify-center p-6">
-      <div className="w-full max-w-5xl">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-8 backdrop-blur-sm flex flex-col gap-6">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <line x1="8" y1="31" x2="15" y2="22" stroke="#374151" strokeWidth="1.5" />
-              <line x1="15" y1="22" x2="23" y2="10" stroke="#374151" strokeWidth="1.5" />
-              <line x1="23" y1="10" x2="32" y2="14" stroke="#374151" strokeWidth="1.5" />
-              <line x1="15" y1="22" x2="30" y2="30" stroke="#374151" strokeWidth="1.5" />
-              <circle cx="8" cy="31" r="2.6" fill="#2dd4bf" />
-              <circle cx="15" cy="22" r="2.6" fill="#2dd4bf" />
-              <circle cx="23" cy="10" r="2.6" fill="#2dd4bf" />
-              <circle cx="32" cy="14" r="2.6" fill="#2dd4bf" />
-              <circle cx="30" cy="30" r="2.6" fill="#2dd4bf" />
-            </svg>
+    <main
+      style={{
+        position: "relative",
+        minHeight: "100vh",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      {/* ── BACKGROUND IMAGE ──────────────────────────── */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: "url('/background1.png')",
+          backgroundSize: "cover",
+          backgroundPosition: "center center",
+          backgroundRepeat: "no-repeat",
+          zIndex: 0,
+        }}
+      />
 
-            <div>
-              <h2 className="text-2xl font-bold text-white">Start Exploring</h2>
-              <p className="text-sm text-gray-400">You have a curiosity. Follow it anywhere.</p>
-            </div>
+      {/* ── DARK OVERLAY — softens the image so text pops ── */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.65) 100%)",
+          zIndex: 1,
+        }}
+      />
 
-            <input
-              value={exploreInput}
-              onChange={(e) => setExploreInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleExplore();
+      {/* ── THEME TOGGLE (top-right, above everything) ─── */}
+      {/* The global ThemeToggle in layout already renders; 
+          we override its position here with a local one for the landing page */}
+      <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100 }}>
+        <ThemeToggle standalone />
+      </div>
+
+      {/* ── HERO CONTENT ───────────────────────────────── */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          padding: "0 24px",
+          width: "100%",
+          maxWidth: "860px",
+          gap: "0px",
+        }}
+      >
+        {/* BADGE */}
+        {mounted && (
+          <span
+            className="fade-in"
+            style={{
+              transform: `translate(${POSITION.badge.x}px, ${POSITION.badge.y}px)`,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "5px 14px",
+              borderRadius: "999px",
+              fontSize: "12px",
+              fontWeight: 500,
+              letterSpacing: "0.05em",
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.22)",
+              color: "rgba(255,255,255,0.85)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              marginBottom: "28px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "var(--accent)",
+                display: "inline-block",
               }}
-              placeholder="What are you curious about?"
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-teal-500 transition-colors"
             />
+            AI-Powered Learning OS
+          </span>
+        )}
 
-            <button
-              onClick={handleExplore}
-              className="w-full py-3 rounded-xl border border-teal-500 text-teal-400 hover:bg-teal-500/10 transition-all font-medium"
-            >
-              Open the Map →
-            </button>
-          </div>
+        {/* H1 */}
+        <h1
+          className="slide-up"
+          style={{
+            transform: `translate(${POSITION.heading.x}px, ${POSITION.heading.y}px)`,
+            fontSize: "clamp(2.5rem, 7vw, 4.5rem)",
+            fontWeight: 700,
+            fontFamily: "var(--font-inter), sans-serif",
+            lineHeight: 1.1,
+            color: "#FFFFFF",
+            letterSpacing: "-0.02em",
+            marginBottom: "20px",
+            textShadow: "0 2px 24px rgba(0,0,0,0.5)",
+          }}
+        >
+          Learn Anything.
+          <br />
+          <span style={{ color: "var(--accent)", filter: "drop-shadow(0 0 20px rgba(96,165,250,0.4))" }}>
+            Master Everything.
+          </span>
+        </h1>
 
-          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-8 backdrop-blur-sm flex flex-col gap-6">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 28H24" stroke="#374151" strokeWidth="2" strokeDasharray="3 3" />
-              <path d="M24 22L34 28L24 34" stroke="#2dd4bf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </svg>
+        {/* SUBTITLE */}
+        <p
+          className="slide-up"
+          style={{
+            transform: `translate(${POSITION.subtitle.x}px, ${POSITION.subtitle.y}px)`,
+            fontSize: "clamp(1rem, 2.5vw, 1.2rem)",
+            color: "rgba(255,255,255,0.72)",
+            maxWidth: "520px",
+            lineHeight: 1.6,
+            marginBottom: "36px",
+            animationDelay: "60ms",
+          }}
+        >
+          AI-personalized learning paths built from first principles — videos, quizzes, and context in one intelligent workspace.
+        </p>
 
-            <div>
-              <h2 className="text-2xl font-bold text-white">Start Learning</h2>
-              <p className="text-sm text-gray-400">You have a goal. Get a structured path to it.</p>
-            </div>
+        {/* CTAs */}
+        <div
+          className="slide-up"
+          style={{
+            transform: `translate(${POSITION.ctas.x}px, ${POSITION.ctas.y}px)`,
+            display: "flex",
+            gap: "12px",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            animationDelay: "120ms",
+            marginBottom: "60px",
+          }}
+        >
+          {/* PRIMARY */}
+          <button
+            id="cta-start-learning"
+            onClick={() => router.push("/onboarding")}
+            className="scale-in"
+            style={{
+              padding: "14px 28px",
+              borderRadius: "10px",
+              background: "var(--accent)",
+              color: "#fff",
+              fontWeight: 600,
+              fontSize: "15px",
+              border: "none",
+              cursor: "pointer",
+              letterSpacing: "0.01em",
+              boxShadow: "0 4px 30px rgba(96,165,250,0.35)",
+              transition: "background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease",
+              animationDelay: "180ms",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-hover)";
+              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)";
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 8px 40px rgba(96,165,250,0.45)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)";
+              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 30px rgba(96,165,250,0.35)";
+            }}
+          >
+            Start Learning →
+          </button>
 
-            {commitStep === 0 && (
-              <>
-                <input
-                  value={commitInput}
-                  onChange={(e) => setCommitInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCommitContinue();
-                  }}
-                  placeholder="What do you want to master?"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-teal-500 transition-colors"
-                />
-                <button
-                  onClick={handleCommitContinue}
-                  className="w-full py-3 rounded-xl border border-teal-500 text-teal-400 hover:bg-teal-500/10 transition-all font-medium"
-                >
-                  Continue →
-                </button>
-              </>
-            )}
-
-            {commitStep === 1 && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">I am a...</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {["Student", "Professional", "Self-taught", "Researcher"].map((role) => (
-                    <button
-                      key={role}
-                      onClick={() => handleRoleSelect(role)}
-                      className={`${pillBase} ${
-                        selectedRole === role
-                          ? "border-teal-500 bg-teal-500/10 text-teal-300"
-                          : "border-gray-700 text-gray-400 hover:border-gray-500"
-                      }`}
-                    >
-                      {role}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {commitStep === 2 && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">I want to...</p>
-                <div className="flex flex-wrap gap-3">
-                  {["Understand it", "Build with it", "Ace an exam"].map((goal) => (
-                    <button
-                      key={goal}
-                      onClick={() => handleGoalSelect(goal)}
-                      className={`${pillBase} ${
-                        selectedGoal === goal
-                          ? "border-teal-500 bg-teal-500/10 text-teal-300"
-                          : "border-gray-700 text-gray-400 hover:border-gray-500"
-                      }`}
-                    >
-                      {goal}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </div>
+          {/* SECONDARY */}
+          <button
+            id="cta-explore-topics"
+            onClick={() => router.push("/nexus")}
+            className="scale-in"
+            style={{
+              padding: "14px 28px",
+              borderRadius: "10px",
+              background: "rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.90)",
+              fontWeight: 500,
+              fontSize: "15px",
+              border: "1px solid rgba(255,255,255,0.22)",
+              cursor: "pointer",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              letterSpacing: "0.01em",
+              transition: "background-color 150ms ease, border-color 150ms ease, transform 150ms ease",
+              animationDelay: "220ms",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.14)";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.4)";
+              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.22)";
+              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+            }}
+          >
+            Explore Topics
+          </button>
         </div>
 
-        <div className="mt-8 text-center">
-          {isUploading ? (
-            <span className="text-gray-500 text-sm">Processing...</span>
-          ) : (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="text-gray-600 hover:text-gray-400 text-sm transition-colors"
-            >
-              📋 Have a syllabus or textbook? Upload it
-            </button>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg"
-            onChange={handleFileUpload}
-          />
-        </div>
+        {/* TOOL TICKER */}
+        <ToolTicker />
       </div>
     </main>
   );

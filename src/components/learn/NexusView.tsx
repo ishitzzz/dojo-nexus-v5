@@ -6,7 +6,6 @@ import {
     ReactFlow,
     Background,
     Controls,
-    MiniMap,
     useNodesState,
     useEdgesState,
     addEdge,
@@ -22,8 +21,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import NodeCard from "@/components/nexus/NodeCard";
 import GhostNode from "@/components/nexus/GhostNode";
 import WorkspaceOverlay from "@/components/nexus/WorkspaceOverlay";
+import ConversationalPanel from "@/components/ConversationalPanel";
 import { KnowledgeNode } from "@/types/nexus";
-import { calculateNewNodePosition } from "@/utils/nexusLayout";
+import { calculateNewNodePosition, relayoutAllNodes } from "@/utils/nexusLayout";
 
 interface NexusViewProps {
     initialTopic?: string;
@@ -71,34 +71,31 @@ function OnboardingInput({
     };
 
     return (
-        <div className="fixed inset-0 flex items-center justify-center bg-black">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-2xl px-6">
-                <h1 className="text-5xl font-bold text-white text-center mb-3">🥋 The Dojo</h1>
-                <p className="text-gray-400 text-center text-lg mb-10">
-                    {chips ? "What specifically do you mean?" : "What do you want to learn today?"}
+        <div className="fixed inset-0 flex items-center justify-center bg-[#09090B]">
+            <div className="w-full max-w-2xl px-6">
+                <p className="text-[#3F3F46] text-center text-sm mb-8">
+                    {chips ? "What specifically do you mean?" : ""}
                 </p>
 
                 {chips && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-3 mb-6">
-                        <p className="text-gray-500 text-center text-sm mb-4">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="space-y-3 mb-6">
+                        <p className="text-[#71717A] text-center text-sm mb-4">
                             &ldquo;{originalGoal}&rdquo; could mean several things. Pick one:
                         </p>
                         <div className="grid grid-cols-2 gap-3">
                             {chips.map((chip, i) => (
-                                <motion.button
+                                <button
                                     key={i}
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ delay: i * 0.08 }}
                                     onClick={() => onChipClick(chip)}
-                                    className="group p-4 bg-gray-900/80 border border-gray-700 rounded-2xl text-left hover:border-teal-500 hover:bg-gray-800/80 transition-all duration-200 cursor-pointer"
+                                    className="p-4 bg-[#111114] border border-[#1C1C21] rounded-lg text-left hover:border-[#6366F1]/40 cursor-pointer"
+                                    style={{ transition: "border-color 150ms ease" }}
                                 >
-                                    <span className="block text-white font-semibold text-base group-hover:text-teal-300 transition-colors">{chip.label}</span>
-                                    <span className="block text-gray-500 text-sm mt-1">{chip.preview}</span>
-                                </motion.button>
+                                    <span className="block text-[#F4F4F5] font-semibold text-sm">{chip.label}</span>
+                                    <span className="block text-[#71717A] text-xs mt-1">{chip.preview}</span>
+                                </button>
                             ))}
                         </div>
-                        <button onClick={onBackFromChips} className="w-full text-center text-gray-500 hover:text-gray-300 text-sm mt-3 transition-colors cursor-pointer">
+                        <button onClick={onBackFromChips} className="w-full text-center text-[#3F3F46] hover:text-[#71717A] text-sm mt-3 cursor-pointer" style={{ transition: "color 150ms ease" }}>
                             ← Try a different query
                         </button>
                     </motion.div>
@@ -110,26 +107,29 @@ function OnboardingInput({
                             type="text"
                             value={goal}
                             onChange={(e) => setGoal(e.target.value)}
-                            placeholder="e.g., Learn web design, Understand machine learning..."
+                            placeholder="What do you want to understand?"
                             disabled={isLoading}
-                            className="w-full px-6 py-5 bg-gray-900/80 border border-gray-700 rounded-2xl text-white text-lg placeholder-gray-500 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all disabled:opacity-50"
+                            autoFocus
+                            className="w-full px-6 py-5 bg-[#111114] border border-[#1C1C21] rounded-lg text-[#F4F4F5] text-lg placeholder-[#3F3F46] focus:outline-none focus:border-[#6366F1] disabled:opacity-50"
+                            style={{ transition: "border-color 150ms ease" }}
                         />
 
                         <button
                             type="submit"
                             disabled={!goal.trim() || isLoading}
-                            className="w-full py-4 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 rounded-2xl text-white font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            className="w-full py-4 bg-[#6366F1] hover:bg-[#818CF8] rounded-lg text-white font-medium text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            style={{ transition: "background-color 150ms ease" }}
                         >
-                            {isLoading ? <><span className="animate-spin">⏳</span> Building your learning path...</> : <>Start Learning →</>}
+                            {isLoading ? <><span className="animate-spin text-sm">⏳</span> Building your map...</> : <>Start Exploring →</>}
                         </button>
                     </form>
                 )}
-            </motion.div>
+            </div>
         </div>
     );
 }
 
-function SuggestedPathsPanel({
+function SuggestedPathsTab({
     paths,
     onSelect,
     parentId,
@@ -138,25 +138,58 @@ function SuggestedPathsPanel({
     onSelect: (question: string) => void;
     parentId: string;
 }) {
+    const [isOpen, setIsOpen] = useState(false);
+
     if (!paths || paths.length === 0) return null;
 
     return (
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 w-72 space-y-3">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Explore next →</p>
-            {paths.map((path, idx) => (
-                <motion.button
-                    key={idx}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    onClick={() => onSelect(path.question)}
-                    className="w-full text-left p-4 bg-gray-900/80 hover:bg-gray-800 border border-gray-700 hover:border-teal-500/50 rounded-xl transition-all group"
-                >
-                    <p className="text-sm text-white group-hover:text-teal-300 transition-colors">{path.question}</p>
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{path.preview}</p>
-                </motion.button>
-            ))}
-        </motion.div>
+        <div className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex items-center">
+            {/* Collapsed Tab */}
+            <AnimatePresence>
+                {!isOpen && (
+                    <motion.button
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        onClick={() => setIsOpen(true)}
+                        className="absolute right-0 bg-[#111114] border border-[#1C1C21] border-r-0 text-[#71717A] hover:text-[#F4F4F5] px-1 py-4 rounded-l-md hover:border-[#6366F1]/30 cursor-pointer"
+                        style={{ transition: "colors 150ms ease" }}
+                    >
+                        <div style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }} className="text-xs tracking-wider">
+                            Explore →
+                        </div>
+                    </motion.button>
+                )}
+            </AnimatePresence>
+
+            {/* Expanded Panel */}
+            <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: isOpen ? 0 : "100%" }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="absolute right-0 bg-[#09090B] border border-[#1C1C21] border-r-0 rounded-l-xl shadow-lg w-[280px] p-4 flex flex-col max-h-[80vh]"
+            >
+                <div className="flex justify-between items-center mb-4">
+                    <p className="text-[10px] text-[#3F3F46] uppercase tracking-wider">Explore next →</p>
+                    <button onClick={() => setIsOpen(false)} className="text-[#3F3F46] hover:text-[#F4F4F5] cursor-pointer">✕</button>
+                </div>
+                <div className="space-y-2 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#1C1C21 transparent" }}>
+                    {paths.map((path, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => {
+                                onSelect(path.question);
+                            }}
+                            className="w-full text-left p-3 bg-[#111114] hover:bg-[#09090B] border border-[#1C1C21] hover:border-[#6366F1]/30 rounded-lg group cursor-pointer"
+                            style={{ transition: "border-color 150ms ease" }}
+                        >
+                            <p className="text-xs text-[#F4F4F5] group-hover:text-[#818CF8]" style={{ transition: "color 150ms ease" }}>{path.question}</p>
+                            <p className="text-[10px] text-[#3F3F46] mt-0.5 line-clamp-2">{path.preview}</p>
+                        </button>
+                    ))}
+                </div>
+            </motion.div>
+        </div>
     );
 }
 
@@ -183,15 +216,31 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
     const [hotNodeTitle, setHotNodeTitle] = useState<string | null>(null);
     const [hotDismissed, setHotDismissed] = useState(false);
 
-    const { fitView } = useReactFlow();
+    const { fitView, zoomIn, zoomOut } = useReactFlow();
     const router = useRouter();
 
     const [seenVideoIds, setSeenVideoIds] = useState<string[]>([]);
 
+    // Scope heat tracking to the current topic so sessions don't bleed into each other
+    const heatKey = resolvedTopic
+        ? `nexus_heat_${resolvedTopic.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 40)}`
+        : "nexus_heat";
+
     useEffect(() => {
-        const saved = localStorage.getItem("nexus_heat");
-        if (saved) setVisitCounts(JSON.parse(saved));
-    }, []);
+        // One-time cleanup: remove the old unscoped key so stale data doesn't persist
+        localStorage.removeItem("nexus_heat");
+
+        // Load heat data scoped to this topic only
+        const saved = localStorage.getItem(heatKey);
+        if (saved) {
+            try { setVisitCounts(JSON.parse(saved)); } catch { setVisitCounts({}); }
+        } else {
+            setVisitCounts({});
+        }
+        // Also reset hot node state whenever the topic key changes
+        setHotNodeTitle(null);
+        setHotDismissed(false);
+    }, [heatKey]);
 
     useEffect(() => {
         if (onActiveNodesChange) {
@@ -210,6 +259,7 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
         });
     }, []);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleInitialize = useCallback(async (goal: string, clarified?: boolean) => {
         setOriginTopic(goal);
         setIsLoadingGoal(true);
@@ -248,6 +298,7 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
                 },
             };
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const spawnedNodes: Node[] = (data.initialNodes || []).map((node: any) => ({
                 id: node.id,
                 type: "nexusNode",
@@ -261,14 +312,14 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
                 },
             }));
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const spawnedEdges: Edge[] = (data.initialNodes || []).map((node: any, i: number) => ({
                 id: `edge-${data.origin.id}-${node.id}`,
                 source: data.origin.id,
                 target: node.id,
-                animated: true,
-                label: i === 0 ? "Start Here" : "Then This",
-                style: { stroke: "rgba(45, 212, 191, 0.6)", strokeWidth: 2 },
-                labelStyle: { fill: "#9ca3af", fontSize: 12 },
+                animated: false,
+                style: { stroke: "#1C1C21", strokeWidth: 1 },
+                labelStyle: { fill: "#3F3F46", fontSize: 11 },
             }));
 
             setNodes([originNode, ...spawnedNodes]);
@@ -277,7 +328,22 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
             setLastExpandedId(data.origin.id);
             setIsInitialized(true);
 
-            setTimeout(() => fitView({ padding: 0.3 }), 100);
+            setTimeout(async () => {
+                const allNodes = [originNode, ...spawnedNodes];
+                const allEdges = spawnedEdges;
+                const positions = await relayoutAllNodes(
+                    allNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })),
+                    allEdges.map(e => ({ source: e.source, target: e.target })),
+                    originNode.id
+                );
+                setNodes(prev => prev.map(n => positions.has(n.id) ? { ...n, position: positions.get(n.id)! } : n));
+                setTimeout(() => fitView({ padding: 0.3 }), 50);
+            }, 100);
+
+            // Clear heat state for the new topic session
+            setVisitCounts({});
+            setHotNodeTitle(null);
+            setHotDismissed(false);
         } catch (error) {
             console.error("Nexus initialization failed:", error);
             setNodes([
@@ -323,8 +389,9 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
         const title = node.data.title;
         setVisitCounts((prev) => {
             const updated = { ...prev, [title]: (prev[title] || 0) + 1 };
-            localStorage.setItem("nexus_heat", JSON.stringify(updated));
-            const hotEntry = (Object.entries(updated) as Array<[string, number]>).find(([_, c]) => c >= 3);
+            // Save scoped to current topic
+            localStorage.setItem(heatKey, JSON.stringify(updated));
+            const hotEntry = (Object.entries(updated) as Array<[string, number]>).find(([, c]) => c >= 3);
             if (hotEntry && !hotDismissed) setHotNodeTitle(hotEntry[0]);
             return updated;
         });
@@ -376,14 +443,21 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
                     id: data.edge.id,
                     source: parentId,
                     target: data.newNode.id,
-                    animated: true,
+                    animated: false,
                     label: data.edge.label,
-                    style: { stroke: "rgba(45, 212, 191, 0.6)", strokeWidth: 2 },
-                    labelStyle: { fill: "#9ca3af", fontSize: 12 },
+                    style: { stroke: "#1C1C21", strokeWidth: 1 },
+                    labelStyle: { fill: "#3F3F46", fontSize: 11 },
                 };
 
+                // Mark recently traversed path as accent
+                setEdges((eds) => {
+                    const updated = eds.map(e => ({
+                        ...e,
+                        style: { stroke: "#1C1C21", strokeWidth: 1 },
+                    }));
+                    return [...updated, { ...newEdge, style: { stroke: "#6366F1", strokeWidth: 1 } }];
+                });
                 setNodes((nds) => [...nds, newNode]);
-                setEdges((eds) => [...eds, newEdge]);
                 setSuggestedPaths(data.suggestedPaths || []);
                 setLastExpandedId(data.newNode.id);
                 setTimeout(() => fitView({ padding: 0.25, duration: 300 }), 50);
@@ -457,23 +531,31 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
     }
 
     return (
-        <div className="w-full h-screen bg-black">
+        <div 
+            className="w-full h-screen bg-[#09090B] react-flow"
+            style={{ scrollBehavior: "smooth" }}
+            onWheel={(e) => {
+                if (e.deltaY < 0) zoomIn({ duration: 200 });
+                else zoomOut({ duration: 200 });
+            }}
+        >
             <AnimatePresence>
                 {isExpanding && (
                     <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-4 left-1/2 -translate-x-1/2 z-40 px-6 py-3 bg-teal-900/90 border border-teal-700 rounded-full flex items-center gap-3"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute top-4 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 bg-[#111114] border border-[#1C1C21] rounded-full flex items-center gap-2"
                     >
-                        <span className="animate-spin">🐇</span>
-                        <span className="text-sm text-teal-200">Following the rabbit hole...</span>
+                        <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-pulse"></span>
+                        <span className="text-xs text-[#71717A]">Following the rabbit hole...</span>
                     </motion.div>
                 )}
             </AnimatePresence>
 
             {suggestedPaths.length > 0 && lastExpandedId && (
-                <SuggestedPathsPanel
+                <SuggestedPathsTab
                     paths={suggestedPaths}
                     parentId={lastExpandedId}
                     onSelect={(question) => handleExpand(lastExpandedId, question)}
@@ -482,20 +564,22 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
 
             {hotNodeTitle && !hotDismissed && (
                 <motion.div
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-gray-900 border-l-4 border-teal-500 rounded-xl shadow-2xl"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-[#111114] border-l-2 border-l-[#6366F1] border border-[#1C1C21] rounded-lg"
                 >
-                    <span className="text-sm text-gray-300">
-                        You keep returning to <span className="text-teal-400 font-bold">&quot;{hotNodeTitle}&quot;</span>
+                    <span className="text-sm text-[#71717A]">
+                        You keep returning to <span className="text-[#F4F4F5] font-semibold">&quot;{hotNodeTitle}&quot;</span>
                     </span>
                     <button
                         onClick={() => router.push(`/roadmap?topic=${encodeURIComponent(hotNodeTitle)}&role=Self-Learner&experience=Deep Dive&nexusOrigin=${originTopic}`)}
-                        className="text-xs bg-teal-600 hover:bg-teal-500 text-white px-3 py-1.5 rounded-lg"
+                        className="text-xs bg-[#6366F1] hover:bg-[#818CF8] text-white px-3 py-1.5 rounded-md"
+                        style={{ transition: "background-color 150ms ease" }}
                     >
                         Go Deep →
                     </button>
-                    <button onClick={() => setHotDismissed(true)} className="text-gray-500 hover:text-white text-xs">
+                    <button onClick={() => setHotDismissed(true)} className="text-[#3F3F46] hover:text-[#F4F4F5] text-xs" style={{ transition: "color 150ms ease" }}>
                         ✕
                     </button>
                 </motion.div>
@@ -511,25 +595,20 @@ export default function NexusView({ initialTopic, knownConcepts, onActiveNodesCh
                 onMove={onMove}
                 nodeTypes={nodeTypes}
                 fitView
-                minZoom={0.1}
-                maxZoom={2}
+                minZoom={0.3}
+                maxZoom={1.8}
+                zoomOnScroll={true}
+                panOnScroll={false}
+                zoomActivationKeyCode={null}
                 defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
                 proOptions={{ hideAttribution: true }}
             >
-                <Background color="#1e293b" gap={40} size={1} />
-                <Controls className="!bg-gray-900 !border-gray-700 !rounded-xl" showInteractive={false} />
-                <MiniMap
-                    className="!bg-gray-900 !border-gray-700 !rounded-xl"
-                    nodeColor={(node) => {
-                        if (node.data.status === "mastered") return "#facc15";
-                        if (node.data.status === "active") return "#2dd4bf";
-                        return "#475569";
-                    }}
-                    maskColor="rgba(0, 0, 0, 0.85)"
-                />
+                <Background color="#1C1C21" gap={30} size={0.5} variant={"dots" as any} />
+                <Controls showInteractive={false} />
             </ReactFlow>
 
             <WorkspaceOverlay node={activeNode} onClose={handleCloseWorkspace} originTopic={originTopic} seenVideoIds={seenVideoIds} onVideoSeen={handleVideoSeen} />
+            <ConversationalPanel pageContext={{ page: "nexus", topic: originTopic, nexusNode: activeNode?.title || "" }} />
         </div>
     );
 }

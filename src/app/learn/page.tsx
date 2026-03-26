@@ -12,8 +12,6 @@ function LearnShell() {
   const searchParams = useSearchParams();
 
   const topic = searchParams.get("topic") || "";
-  const role = searchParams.get("role") || "Student";
-  const experience = searchParams.get("experience") || "Deep Dive";
   const nexusTrail = searchParams.get("nexusTrail") || "";
   const nexusOrigin = searchParams.get("nexusOrigin") || "";
   const knownConcepts = searchParams.get("knownConcepts") || "";
@@ -68,7 +66,7 @@ function LearnShell() {
             onClick={switchToNexus}
             className={`px-3 py-1.5 rounded-full border text-xs transition-all cursor-pointer ${
               mode === "nexus"
-                ? "bg-teal-500/20 border-teal-500 text-teal-300"
+                ? "bg-[#6366F1]/20 border-[#6366F1] text-[#818CF8]"
                 : "border-gray-700 text-gray-500 hover:text-gray-300"
             }`}
           >
@@ -79,7 +77,7 @@ function LearnShell() {
             onClick={switchToDojo}
             className={`px-3 py-1.5 rounded-full border text-xs transition-all cursor-pointer ${
               mode === "dojo"
-                ? "bg-teal-500/20 border-teal-500 text-teal-300"
+                ? "bg-[#6366F1]/20 border-[#6366F1] text-[#818CF8]"
                 : "border-gray-700 text-gray-500 hover:text-gray-300"
             }`}
           >
@@ -104,8 +102,6 @@ function LearnShell() {
             <motion.div key="dojo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full w-full overflow-y-auto">
               <DojoView
                 initialTopic={topic}
-                initialRole={role}
-                initialExperience={experience}
                 nexusTrail={nexusTrail}
                 nexusOrigin={nexusOrigin}
                 onCompletedModulesChange={setCompletedDojoTitles}

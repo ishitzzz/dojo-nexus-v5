@@ -2,7 +2,6 @@
 
 import { memo, useState, useCallback } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
-import { motion } from "framer-motion";
 
 interface ContentSection {
     heading: string;
@@ -40,63 +39,53 @@ function NodeCard({ data }: NodeProps<NodeCardData>) {
         [followUpInput, onExpand]
     );
 
-    // Status-based styling
     const statusStyles = {
-        ghost: "opacity-50 border-dashed border-gray-600 bg-gray-900/40",
-        active: "opacity-100 border-solid border-teal-500/60 bg-gray-900/90",
-        mastered: "opacity-100 border-solid border-yellow-500/60 bg-gray-900/90 shadow-[0_0_30px_rgba(250,204,21,0.15)]",
+        ghost: "opacity-75 border-dashed border-[var(--border-hover)] bg-[var(--bg-card)]/60",
+        active: "opacity-100 border-solid border-[#6366F1]/40 bg-[#111114]",
+        mastered: "opacity-100 border-solid border-[#818CF8]/60 bg-[#111114]",
     };
 
-    // Wider nodes at higher zoom
     const showFullContent = zoomLevel > 0.7;
     const showFollowUp = zoomLevel > 0.6 && status !== "ghost";
 
     return (
-        <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+        <div
             className={`
-        group relative rounded-3xl border-2 backdrop-blur-lg transition-all duration-300 cursor-pointer
-        hover:shadow-2xl hover:border-teal-400/70
-        ${statusStyles[status]}
-        ${visitCount >= 3 ? "ring-2 ring-teal-400 ring-offset-2 ring-offset-gray-900 animate-pulse" : ""}
-        ${showFullContent ? 'p-6 min-w-[340px] max-w-[400px]' : 'p-4 min-w-[260px] max-w-[320px]'}
-      `}
+                group relative rounded-lg border cursor-pointer
+                hover:border-[#6366F1]/60
+                ${statusStyles[status]}
+                ${visitCount >= 3 ? "ring-1 ring-[#6366F1]/30" : ""}
+                ${showFullContent ? 'p-5 min-w-[340px] max-w-[400px]' : 'p-4 min-w-[260px] max-w-[320px]'}
+            `}
+            style={{ transition: "border-color 150ms ease" }}
             onClick={status !== "ghost" ? onOpen : undefined}
         >
-            {/* Connection Handles */}
-            <Handle type="target" position={Position.Top} className="!bg-teal-400 !w-4 !h-4 !border-2 !border-gray-900 !-top-2" />
-            <Handle type="source" position={Position.Bottom} className="!bg-teal-400 !w-4 !h-4 !border-2 !border-gray-900 !-bottom-2" />
+            <Handle type="target" position={Position.Top} className="!bg-[#6366F1] !w-2 !h-2 !border-[1px] !border-[#09090B] !-top-1" />
+            <Handle type="source" position={Position.Bottom} className="!bg-[#6366F1] !w-2 !h-2 !border-[1px] !border-[#09090B] !-bottom-1" />
 
-            {/* Status Badge */}
-            <div className="absolute -top-3 -right-3">
+            {/* Status badge */}
+            <div className="absolute -top-2 -right-2">
                 {status === "mastered" && (
-                    <span className="inline-flex items-center justify-center w-8 h-8 bg-yellow-500 rounded-full text-black text-sm font-bold">✓</span>
-                )}
-                {status === "ghost" && (
-                    <span className="inline-flex items-center justify-center w-8 h-8 bg-gray-700 rounded-full text-gray-400 text-xs">🔒</span>
+                    <span className="inline-flex items-center justify-center w-6 h-6 bg-[#6366F1] rounded-full text-white text-[10px] font-bold">✓</span>
                 )}
             </div>
 
-            {/* Title */}
-            <h3 className={`font-bold text-base mb-2 leading-tight ${status === "mastered" ? "text-yellow-300" : "text-white"}`}>
+            <h3 className={`font-semibold text-sm mb-1.5 leading-tight ${status === "mastered" ? "text-[#818CF8]" : "text-[#F4F4F5]"}`}>
                 {title}
             </h3>
 
-            {/* Summary */}
-            <p className={`text-gray-300 mb-4 leading-relaxed ${showFullContent ? 'text-sm' : 'text-xs line-clamp-3'}`}>
+            <p className={`text-[#71717A] mb-3 leading-relaxed ${showFullContent ? 'text-xs' : 'text-[11px] line-clamp-3'}`}>
                 {summary}
             </p>
 
-            {/* Content Sections (only at high zoom) */}
             {showFullContent && content?.sections && (
-                <div className="space-y-4 mb-4">
+                <div className="space-y-3 mb-3">
                     {content.sections.slice(0, 3).map((section, idx) => (
-                        <div key={idx} className="border-l-2 border-teal-500/40 pl-3">
-                            <h4 className="text-sm font-semibold text-teal-300 mb-1">
+                        <div key={idx} className="border-l border-[#6366F1]/30 pl-3">
+                            <h4 className="text-[11px] font-semibold text-[#818CF8] mb-0.5">
                                 {section.heading}
                             </h4>
-                            <p className="text-xs text-gray-400 leading-relaxed">
+                            <p className="text-[10px] text-[#71717A] leading-relaxed">
                                 {section.body}
                             </p>
                         </div>
@@ -104,10 +93,9 @@ function NodeCard({ data }: NodeProps<NodeCardData>) {
                 </div>
             )}
 
-            {/* Ask Follow-Up Input */}
             {showFollowUp && (
                 <>
-                    <div className="pt-4 border-t border-gray-700/50">
+                    <div className="pt-3 border-t border-[#1C1C21]">
                         <input
                             type="text"
                             value={followUpInput}
@@ -115,35 +103,30 @@ function NodeCard({ data }: NodeProps<NodeCardData>) {
                             onKeyDown={handleKeyDown}
                             onClick={(e) => e.stopPropagation()}
                             placeholder="Ask a question..."
-                            className="w-full bg-gray-800/60 border border-gray-600 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-teal-400 focus:bg-gray-800/80 transition-all"
+                            className="w-full bg-[#09090B] border border-[#1C1C21] rounded-md px-3 py-2 text-xs text-[#F4F4F5] placeholder-[#3F3F46] focus:outline-none focus:border-[#6366F1]"
+                            style={{ transition: "border-color 150ms ease" }}
                         />
                     </div>
-                    <div className="mt-3 pt-3 border-t border-gray-700/40">
+                    <div className="mt-2 pt-2 border-t border-[#1C1C21]">
                         <button
                             onClick={(e) => { e.stopPropagation(); onLaunchCourse(); }}
-                            className="w-full text-left text-xs text-gray-500 
-               hover:text-teal-400 transition-colors 
-               flex items-center gap-1.5 group"
+                            className="w-full text-left text-[10px] text-[#3F3F46] hover:text-[#6366F1] flex items-center gap-1.5 group"
+                            style={{ transition: "color 150ms ease" }}
                             title="Generate a full learning path starting from this concept"
                         >
-                            <span className="group-hover:translate-y-px transition-transform text-base leading-none">
-                                ↓
-                            </span>
+                            <span className="text-xs leading-none">↓</span>
                             Build a full course from here
                         </button>
                     </div>
                 </>
             )}
 
-            {/* Ghost Node CTA */}
             {status === "ghost" && (
-                <div className="mt-3 text-center">
-                    <span className="text-xs text-gray-500 bg-gray-800/50 px-3 py-1 rounded-full">
-                        Click to explore
-                    </span>
+                <div className="mt-2 text-center">
+                    <span className="text-[10px] text-[#3F3F46]">Click to explore</span>
                 </div>
             )}
-        </motion.div>
+        </div>
     );
 }
 

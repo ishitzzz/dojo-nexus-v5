@@ -11,8 +11,8 @@ const elk = new ELK();
 const layoutOptions = {
     "elk.algorithm": "layered",
     "elk.direction": "DOWN",
-    "elk.spacing.nodeNode": "300",           // TRIPLED from 100
-    "elk.layered.spacing.nodeNodeBetweenLayers": "350",  // DOUBLED from 150
+    "elk.spacing.nodeNode": "400",           // TRIPLED from 100
+    "elk.layered.spacing.nodeNodeBetweenLayers": "450",  // DOUBLED from 150
     "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     "elk.edgeRouting": "SPLINES",
     "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
