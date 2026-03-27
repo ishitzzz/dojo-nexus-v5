@@ -2,64 +2,57 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import ThemeToggle from "@/components/ThemeToggle";
 
 // ─────────────────────────────────────────────────────────────
-// POSITIONAL CONTROLS — tweak these values to nudge any layer.
-// Positive translateX → right, negative → left
-// Positive translateY → down,  negative → up
+// MANUAL DESIGN CONTROLS (IN CODE)
+// Adjust these values to perfectly position & style your content
 // ─────────────────────────────────────────────────────────────
 const POSITION = {
-  badge:    { x: 0,  y: 0  },   // "AI-Powered Learning OS" pill
-  heading:  { x: 0,  y: 0  },   // H1 main heading
-  subtitle: { x: 0,  y: 8  },   // one-liner below H1
-  ctas:     { x: 0,  y: 16 },   // button row
-  ticker:   { x: 0,  y: 0  },   // bottom tool ticker
-} as const;
+  container: { x: 0, y: -140 }, // tweak x and y here directly in code
+};
 
-// ─────────────────────────────────────────────────────────────
-// TICKER CHIP — small labelled pill
-// ─────────────────────────────────────────────────────────────
-const TOOLS = ["Dojo", "Nexus", "Smart Reader", "Syllabus Sync", "AI Chat", "Feynman Mode", "Nexus Map"];
-
-function ToolTicker() {
-  return (
-    <div
-      className="flex items-center gap-3 overflow-x-auto pb-1 max-w-lg mx-auto"
-      style={{
-        transform: `translate(${POSITION.ticker.x}px, ${POSITION.ticker.y}px)`,
-        scrollbarWidth: "none",
-        msOverflowStyle: "none",
-      }}
-    >
-      {TOOLS.map((t) => (
-        <span
-          key={t}
-          className="shrink-0 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap"
-          style={{
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.15)",
-            color: "rgba(255,255,255,0.65)",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          {t}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// MAIN PAGE
-// ─────────────────────────────────────────────────────────────
+const TYPOGRAPHY = {
+  heading: {
+    fontSize: "clamp(2rem, 5.5vw, 4.5rem)",
+    letterSpacing: "-0.04em",
+    lineHeight: 0.95,
+    marginBottom: "36px",
+  },
+  subheading: {
+    fontSize: "clamp(1rem, 2vw, 1.25rem)",
+    letterSpacing: "-0.01em",
+    lineHeight: 1.5,
+    marginBottom: "48px",
+  }
+};
 export default function LandingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [isDay, setIsDay] = useState(true);
 
   useEffect(() => {
     setMounted(true);
+    // Automatically detect day/night based on local browser time
+    const hour = new Date().getHours();
+    setIsDay(hour >= 6 && hour < 18);
   }, []);
+
+  if (!mounted) return null; // Prevent hydration mismatch
+
+  // Dynamic Styles based on Day/Night
+  // The background image will gracefully switch or remain if background2.png is copied
+  const bgImage = isDay ? "url('/background1.png')" : "url('/background2.png'), url('/background1.png')";
+
+  // Theme text & colors purely based on day/night 
+  const textColor = isDay ? "#000000" : "#FFFFFF";
+  
+  // Create an ethereal white glow only in night mode (matches image inspiration)
+  const headingShadow = isDay ? "none" : "0 0 10px rgba(255,255,255,0.6), 0 0 20px rgba(255,255,255,0.3)";
+  const subheadingShadow = isDay ? "none" : "0 0 8px rgba(255,255,255,0.5), 0 0 16px rgba(255,255,255,0.2)";
+  const buttonBg = isDay ? "rgba(245,245,245,0.9)" : "rgba(255,255,255,0.15)";
+  const buttonHoverBg = isDay ? "rgba(230,230,230,1)" : "rgba(255,255,255,0.25)";
+  const buttonText = isDay ? "#000000" : "#FFFFFF";
+  const buttonBorder = isDay ? "1px solid rgba(0,0,0,0.15)" : "1px solid rgba(255,255,255,0.3)";
 
   return (
     <main
@@ -72,39 +65,23 @@ export default function LandingPage() {
         alignItems: "center",
         justifyContent: "center",
         overflow: "hidden",
+        backgroundColor: "#000", // Fallback if image fails
       }}
     >
-      {/* ── BACKGROUND IMAGE ──────────────────────────── */}
+      {/* ── BACKGROUND IMAGE (No Filters) ──────────────────────────── */}
       <div
         aria-hidden="true"
         style={{
           position: "absolute",
           inset: 0,
-          backgroundImage: "url('/background1.png')",
+          backgroundImage: bgImage,
           backgroundSize: "cover",
           backgroundPosition: "center center",
           backgroundRepeat: "no-repeat",
           zIndex: 0,
+          transition: "background-image 0.5s ease-in-out",
         }}
       />
-
-      {/* ── DARK OVERLAY — softens the image so text pops ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.65) 100%)",
-          zIndex: 1,
-        }}
-      />
-
-      {/* ── THEME TOGGLE (top-right, above everything) ─── */}
-      {/* The global ThemeToggle in layout already renders; 
-          we override its position here with a local one for the landing page */}
-      <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100 }}>
-        <ThemeToggle standalone />
-      </div>
 
       {/* ── HERO CONTENT ───────────────────────────────── */}
       <div
@@ -117,167 +94,68 @@ export default function LandingPage() {
           textAlign: "center",
           padding: "0 24px",
           width: "100%",
-          maxWidth: "860px",
-          gap: "0px",
+          maxWidth: "1000px", // Increased width so two-line text doesn't wrap naturally
+          transform: `translate(${POSITION.container.x}px, ${POSITION.container.y}px)`,
         }}
       >
-        {/* BADGE */}
-        {mounted && (
-          <span
-            className="fade-in"
-            style={{
-              transform: `translate(${POSITION.badge.x}px, ${POSITION.badge.y}px)`,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "5px 14px",
-              borderRadius: "999px",
-              fontSize: "12px",
-              fontWeight: 500,
-              letterSpacing: "0.05em",
-              background: "rgba(255,255,255,0.10)",
-              border: "1px solid rgba(255,255,255,0.22)",
-              color: "rgba(255,255,255,0.85)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              marginBottom: "28px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "var(--accent)",
-                display: "inline-block",
-              }}
-            />
-            AI-Powered Learning OS
-          </span>
-        )}
-
-        {/* H1 */}
+        {/* H1 - Typography matched closer to Canopy Inspiration */}
         <h1
-          className="slide-up"
           style={{
-            transform: `translate(${POSITION.heading.x}px, ${POSITION.heading.y}px)`,
-            fontSize: "clamp(2.5rem, 7vw, 4.5rem)",
-            fontWeight: 700,
-            fontFamily: "var(--font-inter), sans-serif",
-            lineHeight: 1.1,
-            color: "#FFFFFF",
-            letterSpacing: "-0.02em",
-            marginBottom: "20px",
-            textShadow: "0 2px 24px rgba(0,0,0,0.5)",
+            ...TYPOGRAPHY.heading,
+            fontWeight: 500, // Balanced weight 
+            fontFamily: "var(--font-heading), serif",
+            color: textColor,
+            textShadow: headingShadow, // Dynamic glow
+            whiteSpace: "nowrap", // Forces exactly the two lines we setup
           }}
         >
-          Learn Anything.
+          The internet, filtered.
           <br />
-          <span style={{ color: "var(--accent)", filter: "drop-shadow(0 0 20px rgba(96,165,250,0.4))" }}>
-            Master Everything.
-          </span>
+          For the relentlessly ambitious.
         </h1>
 
         {/* SUBTITLE */}
         <p
-          className="slide-up"
           style={{
-            transform: `translate(${POSITION.subtitle.x}px, ${POSITION.subtitle.y}px)`,
-            fontSize: "clamp(1rem, 2.5vw, 1.2rem)",
-            color: "rgba(255,255,255,0.72)",
-            maxWidth: "520px",
-            lineHeight: 1.6,
-            marginBottom: "36px",
-            animationDelay: "60ms",
+            ...TYPOGRAPHY.subheading,
+            color: textColor,
+            textShadow: subheadingShadow, // Dynamic glow
+            fontFamily: "var(--font-inter), sans-serif",
+            maxWidth: "680px", // Controls paragraph width directly
+            opacity: 0.95,
           }}
         >
-          AI-personalized learning paths built from first principles — videos, quizzes, and context in one intelligent workspace.
+          The internet is built to keep you scrolling. We built a space to help you stay. A workspace for the self-taught, designed to filter out the noise so you can follow your own path—wherever it leads.
         </p>
 
         {/* CTAs */}
-        <div
-          className="slide-up"
-          style={{
-            transform: `translate(${POSITION.ctas.x}px, ${POSITION.ctas.y}px)`,
-            display: "flex",
-            gap: "12px",
-            flexWrap: "wrap",
-            justifyContent: "center",
-            animationDelay: "120ms",
-            marginBottom: "60px",
-          }}
-        >
-          {/* PRIMARY */}
+        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", justifyContent: "center" }}>
+          {/* PRIMARY BUTTON - Styled minimally, no blue */}
           <button
-            id="cta-start-learning"
             onClick={() => router.push("/onboarding")}
-            className="scale-in"
             style={{
-              padding: "14px 28px",
-              borderRadius: "10px",
-              background: "var(--accent)",
-              color: "#fff",
-              fontWeight: 600,
-              fontSize: "15px",
-              border: "none",
-              cursor: "pointer",
-              letterSpacing: "0.01em",
-              boxShadow: "0 4px 30px rgba(96,165,250,0.35)",
-              transition: "background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease",
-              animationDelay: "180ms",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-hover)";
-              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)";
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 8px 40px rgba(96,165,250,0.45)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)";
-              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 30px rgba(96,165,250,0.35)";
-            }}
-          >
-            Start Learning →
-          </button>
-
-          {/* SECONDARY */}
-          <button
-            id="cta-explore-topics"
-            onClick={() => router.push("/nexus")}
-            className="scale-in"
-            style={{
-              padding: "14px 28px",
-              borderRadius: "10px",
-              background: "rgba(255,255,255,0.08)",
-              color: "rgba(255,255,255,0.90)",
+              padding: "16px 48px",
+              borderRadius: "999px", // Pill shape
+              background: buttonBg,
+              color: buttonText,
               fontWeight: 500,
-              fontSize: "15px",
-              border: "1px solid rgba(255,255,255,0.22)",
+              fontSize: "17px",
+              fontFamily: "var(--font-inter), sans-serif",
+              border: buttonBorder,
               cursor: "pointer",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              letterSpacing: "0.01em",
-              transition: "background-color 150ms ease, border-color 150ms ease, transform 150ms ease",
-              animationDelay: "220ms",
+              transition: "all 150ms ease",
+              backdropFilter: "blur(4px)",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.14)";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.4)";
-              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)";
+              (e.currentTarget as HTMLButtonElement).style.background = buttonHoverBg;
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.22)";
-              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+              (e.currentTarget as HTMLButtonElement).style.background = buttonBg;
             }}
           >
-            Explore Topics
+            Start Learning
           </button>
         </div>
-
-        {/* TOOL TICKER */}
-        <ToolTicker />
       </div>
     </main>
   );
